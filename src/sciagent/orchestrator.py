@@ -14,7 +14,7 @@ from .executors import Executor, make_executor
 from .guard import check_plan
 from .planners import Planner, make_planner
 from .simulators import get_simulator, references
-from .spec import StudySpec
+from .spec import PlannerSpec, StudySpec
 from .state import RunRecord, StudyState
 from .tracing import Tracer, environment_info, results_digest
 
@@ -43,6 +43,10 @@ class Orchestrator:
         self.score = score
         self.verbose = verbose
         self._steer_version = 0
+        self._provider = provider
+        self._scheduled_steers: dict[int, list[dict]] = {}
+        self._replay_queue: list[dict] = []
+        self._resumed_from = 0
         self.status = "created"
         self.incumbent_curve: list[dict] = []
 
@@ -59,26 +63,39 @@ class Orchestrator:
                 return {}
         return {}
 
+    def _apply_instructions(self, ctl: dict, root: str, version: int, replayed: bool = False) -> dict:
+        """Apply one-shot instructions (note, bounds, budget, planner switch) and trace them."""
+        applied: dict = {}
+        if ctl.get("note"):
+            self.state.notes.append(str(ctl["note"]))
+            applied["note"] = ctl["note"]
+        for name, (lo, hi) in (ctl.get("bounds") or {}).items():
+            p = self.sim.param(name)
+            lo, hi = max(float(lo), p.low), min(float(hi), p.high)
+            if lo <= hi:
+                self.state.bounds[name] = (lo, hi)
+                applied.setdefault("bounds", {})[name] = [lo, hi]
+        if ctl.get("compute_units") is not None:
+            applied["compute_units"] = self.state.ledger.set_total(float(ctl["compute_units"]))
+        if ctl.get("planner"):
+            # redirect: hand the campaign to a different strategy; it sees the full history so far
+            new = PlannerSpec.model_validate(ctl["planner"])
+            spec2 = self.spec.model_copy(update={"planner": new})
+            self.planner = make_planner(spec2, provider=self._provider if new.kind == "llm" else None)
+            applied["planner"] = new.model_dump(mode="json", exclude_none=True)
+        self.tracer.event("steer", {"version": version, "batch": self.state.batch, "applied": applied,
+                                    "replayed": replayed}, parent=root)
+        return applied
+
     def _apply_steering(self, root: str) -> bool:
         """Apply new researcher instructions; block while paused. Returns False if asked to stop."""
+        for ctl in self._scheduled_steers.pop(self.state.batch, []):  # resume: re-apply at the original batch
+            self._apply_instructions(ctl, root, ctl.get("version", 0), replayed=True)
         while True:
             ctl = self._read_control()
             if ctl.get("version", 0) > self._steer_version:
                 self._steer_version = ctl["version"]
-                applied = {}
-                if ctl.get("note"):
-                    self.state.notes.append(str(ctl["note"]))
-                    applied["note"] = ctl["note"]
-                for name, (lo, hi) in (ctl.get("bounds") or {}).items():
-                    p = self.sim.param(name)
-                    lo, hi = max(float(lo), p.low), min(float(hi), p.high)
-                    if lo <= hi:
-                        self.state.bounds[name] = (lo, hi)
-                        applied.setdefault("bounds", {})[name] = (lo, hi)
-                if ctl.get("compute_units") is not None:
-                    self.state.compute_budget = max(float(ctl["compute_units"]), self.state.spent_compute)
-                    applied["compute_units"] = self.state.compute_budget
-                self.tracer.event("steer", {"version": self._steer_version, "applied": applied}, parent=root)
+                self._apply_instructions(ctl, root, self._steer_version)
             if ctl.get("stop"):
                 self.state.stop_reason = "stopped by researcher"
                 return False
@@ -87,8 +104,46 @@ class Orchestrator:
             if self.status != "paused":
                 self.status = "paused"
                 self._write_status()
-                self.tracer.event("pause", {}, parent=root)
+                self.tracer.event("pause", {"batch": self.state.batch}, parent=root)
             time.sleep(0.3)
+
+    # ------------------------------------------------------------------ resume
+    @classmethod
+    def resume(cls, run_dir: str | Path, **kw) -> Orchestrator:
+        """Continue an interrupted study in place.
+
+        The previous runs are *fast-forwarded*: the planner is driven through the same decisions again, but each
+        simulation it re-proposes is answered from ``runs.jsonl`` instead of being re-run (and LLM calls are
+        answered from the cassette when one was recorded). Steering is re-applied at the batch where it originally
+        happened. Once the recorded history is exhausted the campaign continues live. For deterministic planners
+        the final result is identical to an uninterrupted run.
+        """
+        d = Path(run_dir)
+        spec = StudySpec.from_yaml(d / "spec.yaml")
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        prev_runs = [json.loads(x) for x in (d / "runs.jsonl").read_text().splitlines()] if (d / "runs.jsonl").exists() else []
+        prev_trace = [json.loads(x) for x in (d / "trace.jsonl").read_text().splitlines()] if (d / "trace.jsonl").exists() else []
+        for f in ("runs.jsonl", "trace.jsonl", "summary.json"):
+            if (d / f).exists():
+                (d / f).rename(d / f"{f}.before-resume-{stamp}")
+        ctl = {}
+        if (d / "control.json").exists():
+            ctl = json.loads((d / "control.json").read_text())
+            if ctl.get("stop") or ctl.get("pause"):
+                ctl.pop("stop", None)
+                ctl.pop("pause", None)
+                (d / "control.json").write_text(json.dumps(ctl))
+        if spec.planner.kind == "llm" and spec.planner.llm.cassette and spec.planner.llm.mode == "live":
+            spec.planner.llm.mode = "record"
+        o = cls(spec, d, **kw)
+        o._replay_queue = prev_runs
+        o._steer_version = ctl.get("version", 0)
+        for ev in prev_trace:
+            if ev["kind"] == "steer" and not ev["data"].get("replayed"):
+                o._scheduled_steers.setdefault(ev["data"].get("batch", 0), []).append(
+                    {"version": ev["data"]["version"], **ev["data"]["applied"]})
+        o._resumed_from = len(prev_runs)
+        return o
 
     # ------------------------------------------------------------------ main loop
     def run(self) -> dict:
@@ -100,6 +155,8 @@ class Orchestrator:
             (self.run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
         root = self.tracer.event("study.start", {"name": spec.name, "simulator": sim.name, "planner": spec.planner.kind,
                                                  "budget": spec.budget.model_dump(), "spec_digest": spec.digest()})
+        if self._resumed_from:
+            self.tracer.event("resume", {"recorded_runs": self._resumed_from}, parent=root)
         self.status = "running"
         empty_plans = 0
         t_start = time.perf_counter()
@@ -131,9 +188,9 @@ class Orchestrator:
                             self.tracer.event("llm.call", {"model": u.get("model"), **call}, parent=bid)
                     self.tracer.event("plan", {"planner": self.planner.name, "rationale": plan.rationale,
                                                "stop": plan.stop, "n_proposed": len(plan.runs), "plan_s": plan_s,
-                                               "runs": [r.__dict__ for r in plan.runs],
+                                               "runs": [{"params": r.params, "fidelity": r.fidelity, "why": r.why} for r in plan.runs],
                                                "usage": {k: v for k, v in u.items() if k != "calls"}}, parent=bid)
-                    accepted, issues = check_plan(plan, st)
+                    accepted, issues = check_plan(plan, st, reserve=True)
                     if issues:
                         self.tracer.event("guard", {"issues": issues, "accepted": len(accepted)}, parent=bid)
                     if not accepted:
@@ -148,7 +205,11 @@ class Orchestrator:
                         st.batch += 1
                         continue
                     empty_plans = 0
-                    records = self._execute(accepted, bid)
+                    try:
+                        records = self._execute(accepted, bid)
+                    finally:
+                        st.ledger.release_all()  # anything not committed (e.g. an executor crash) is returned
+                    st.ledger.check()
                     self.planner.observe(records)
                     st.batch += 1
                     inc = st.incumbent()
@@ -164,6 +225,11 @@ class Orchestrator:
                     if plan.stop:
                         st.stop_reason = f"planner stopped: {plan.rationale}"
                         break
+        except KeyboardInterrupt:  # preemption / Ctrl-C: leave a resumable run directory
+            self.status = "interrupted"
+            self.tracer.event("interrupted", {"batch": st.batch}, parent=root)
+            self._write_status()
+            raise
         except Exception as e:
             self.status = "failed"
             self.tracer.event("error", {"error": f"{type(e).__name__}: {e}"}, parent=root)
@@ -186,6 +252,20 @@ class Orchestrator:
         for req in accepted:
             idx = len(st.history) + len(records) + len(jobs)
             seed = derive_seed(self.spec.seed, idx)
+            if self._replay_queue:
+                rec0 = self._replay_queue[0]
+                same = (rec0["index"] == idx and rec0["fidelity"] == req.fidelity and
+                        run_key(sim.name, sim.version, rec0["params"], "", None) == run_key(sim.name, sim.version, req.params, "", None))
+                if same:
+                    self._replay_queue.pop(0)
+                    res = {"objective": rec0["objective"] if rec0["ok"] else float("nan"), "metrics": rec0["metrics"],
+                           "cost": rec0["cost"], "wall_s": rec0["wall_s"], "ok": rec0["ok"], "error": rec0["error"],
+                           "_replayed_cost": rec0["cost"], "_cached": rec0["cached"]}
+                    records.append((idx, req, seed, res, rec0["cached"]))
+                    continue
+                self.tracer.event("resume.diverged", {"index": idx, "remaining_recorded": len(self._replay_queue)},
+                                  parent=parent)
+                self._replay_queue = []
             key = run_key(sim.name, sim.version, req.params, req.fidelity, seed if sim.stochastic else None)
             hit = self.cache.get(key)
             if hit is not None:
@@ -206,10 +286,13 @@ class Orchestrator:
             fid = sim.fidelity(req.fidelity)
             rec = RunRecord(index=idx, batch=st.batch, params=req.params, fidelity=fid.name, fidelity_level=fid.level,
                             seed=seed, objective=res["objective"] if res["ok"] else None, metrics=res["metrics"],
-                            cost=0.0 if cached else fid.cost, wall_s=res["wall_s"], ok=res["ok"], error=res["error"],
+                            cost=res.get("_replayed_cost", 0.0 if cached else fid.cost), wall_s=res["wall_s"], ok=res["ok"], error=res["error"],
                             cached=cached, why=req.why)
             st.history.append(rec)
-            st.spent_compute += rec.cost
+            if req.token is not None:
+                st.ledger.commit(req.token, rec.cost, ref=f"run{idx}")
+            else:  # direct use of _execute without the guard (tests, resume fast-forward)
+                st.ledger.committed += rec.cost
             out.append(rec)
             self.tracer.event("run", rec.to_dict(), parent=parent)
             if self.run_dir:

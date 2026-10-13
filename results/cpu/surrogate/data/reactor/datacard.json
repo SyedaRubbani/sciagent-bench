@@ -1,0 +1,81 @@
+{
+  "simulator": {
+    "name": "reactor",
+    "version": "1.0",
+    "description": "Isothermal batch reactor with consecutive first-order reactions A->B->C. Maximise yield of the intermediate B minus heating, catalyst and lost-throughput (time) costs. Higher temperature speeds both reactions but favours the unwanted B->C step (higher activation energy).",
+    "objective": {
+      "name": "net_yield_B",
+      "sense": "maximize"
+    },
+    "params": [
+      {
+        "name": "T",
+        "low": 300.0,
+        "high": 420.0,
+        "kind": "float",
+        "unit": "K",
+        "description": "reactor temperature"
+      },
+      {
+        "name": "tau",
+        "low": 0.05,
+        "high": 10.0,
+        "kind": "float",
+        "unit": "min",
+        "description": "residence (batch) time"
+      },
+      {
+        "name": "cat",
+        "low": 0.0,
+        "high": 1.0,
+        "kind": "float",
+        "unit": "fraction",
+        "description": "catalyst loading (boosts A->B only, diminishing returns)"
+      }
+    ],
+    "fidelities": [
+      {
+        "name": "euler_coarse",
+        "level": 0,
+        "cost": 1.0,
+        "notes": "explicit Euler with 6 steps; biased, and numerically unstable when k*tau/6 > 2 (hot, long runs)"
+      },
+      {
+        "name": "rk4_medium",
+        "level": 1,
+        "cost": 4.0,
+        "notes": "RK4 with 40 steps; small bias"
+      },
+      {
+        "name": "bdf_fine",
+        "level": 2,
+        "cost": 16.0,
+        "notes": "stiff BDF solver, rtol 1e-9; reference accuracy"
+      }
+    ]
+  },
+  "rows": 10035,
+  "sha256": "9bdc0d5641b51847ff9bfacc02a171f48918da03a9d7a8e8b3c31ec6e5dc9c10",
+  "curation": {
+    "generated": 12288,
+    "from_runs": 0,
+    "dropped_failed": 0,
+    "dropped_nonfinite": 0,
+    "dropped_duplicate": 0,
+    "dropped_unstable": 2253
+  },
+  "splits": {
+    "train": 7995,
+    "val": 1060,
+    "test": 980
+  },
+  "per_fidelity": {
+    "euler_coarse": 2128,
+    "rk4_medium": 3811,
+    "bdf_fine": 4096
+  },
+  "objective_range": [
+    -0.2317951107803732,
+    0.6991631157543028
+  ]
+}

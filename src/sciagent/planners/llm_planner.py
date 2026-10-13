@@ -185,6 +185,17 @@ class LLMPlanner(Planner):
                 return plan
             return Plan([], "LLM budget exhausted", stop=True)
         messages = self.build_messages(state)
+        from ..budget import llm_call_affordable
+
+        ok, worst = llm_call_affordable(state.spent_usd, self.spec.budget.llm_usd,
+                                        len(SYSTEM_PROMPT) + sum(len(m["content"]) for m in messages),
+                                        self.llm.max_tokens, self.llm.price_in_per_mtok, self.llm.price_out_per_mtok)
+        if not ok:
+            if self.fallback:
+                plan = self.fallback.propose(state)
+                plan.rationale = f"LLM budget would be exceeded (worst case ${worst:.4f}) -> BO fallback: " + plan.rationale
+                return plan
+            return Plan([], f"LLM budget would be exceeded by the next call (worst case ${worst:.4f})", stop=True)
         usage = {"tokens_in": 0, "tokens_out": 0, "usd": 0.0, "latency_s": 0.0, "repairs": 0, "calls": [],
                  "model": self.provider.model}
         errors: list[str] = []

@@ -5,14 +5,16 @@
 
 from __future__ import annotations
 
+import hmac
 import json
+import os
 import re
 import threading
 import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
@@ -30,13 +32,25 @@ class SteerRequest(BaseModel):
     note: str | None = None
     bounds: dict[str, tuple[float, float]] | None = None
     compute_units: float | None = None
+    planner: dict | None = None  # redirect, e.g. {"kind": "bo"}
 
 
-def create_app(runs_dir: str | Path = "runs") -> FastAPI:
+def create_app(runs_dir: str | Path = "runs", token: str | None = None) -> FastAPI:
+    """``token`` (or env ``SCIAGENT_API_TOKEN``) enables bearer-token auth on every /api route except health."""
     root = Path(runs_dir)
     root.mkdir(parents=True, exist_ok=True)
-    app = FastAPI(title="SciAgent-Bench", version="0.1.0",
+    token = token if token is not None else os.environ.get("SCIAGENT_API_TOKEN") or None
+
+    def auth(authorization: str | None = Header(None)):
+        if token is None:
+            return
+        given = (authorization or "").removeprefix("Bearer ").strip()
+        if not hmac.compare_digest(given.encode(), token.encode()):
+            raise HTTPException(401, "missing or invalid bearer token", headers={"WWW-Authenticate": "Bearer"})
+
+    app = FastAPI(title="SciAgent-Bench", version="0.2.0",
                   description="Launch, inspect and steer budget-aware simulation campaigns.")
+    guard = [Depends(auth)]
     threads: dict[str, threading.Thread] = {}
     errors: dict[str, str] = {}
 
@@ -59,11 +73,11 @@ def create_app(runs_dir: str | Path = "runs") -> FastAPI:
     def health():
         return {"ok": True}
 
-    @app.get("/api/simulators")
+    @app.get("/api/simulators", dependencies=guard)
     def simulators():
         return [get_simulator(n).card() for n in list_simulators()]
 
-    @app.post("/api/studies", status_code=201)
+    @app.post("/api/studies", status_code=201, dependencies=guard)
     def create_study(spec: dict = Body(..., description="a StudySpec as JSON")):
         try:
             s = StudySpec.model_validate(spec)
@@ -85,7 +99,7 @@ def create_app(runs_dir: str | Path = "runs") -> FastAPI:
         t.start()
         return {"id": sid}
 
-    @app.get("/api/studies")
+    @app.get("/api/studies", dependencies=guard)
     def list_studies():
         out = []
         for d in sorted(root.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
@@ -98,19 +112,19 @@ def create_app(runs_dir: str | Path = "runs") -> FastAPI:
                         "simulator": sm.get("simulator"), "planner": sm.get("planner"), "regret": sm.get("regret")})
         return out
 
-    @app.get("/api/studies/{study_id}")
+    @app.get("/api/studies/{study_id}", dependencies=guard)
     def get_study(study_id: str):
         d = _dir(study_id)
         return {"id": study_id, "status": _read_json(d / "status.json"), "summary": _read_json(d / "summary.json"),
                 "manifest": _read_json(d / "manifest.json"), "spec": (d / "spec.yaml").read_text(),
                 "error": errors.get(study_id)}
 
-    @app.get("/api/studies/{study_id}/runs")
+    @app.get("/api/studies/{study_id}/runs", dependencies=guard)
     def get_runs(study_id: str):
         f = _dir(study_id) / "runs.jsonl"
         return [json.loads(x) for x in f.read_text().splitlines()] if f.exists() else []
 
-    @app.get("/api/studies/{study_id}/trace")
+    @app.get("/api/studies/{study_id}/trace", dependencies=guard)
     def get_trace(study_id: str, kinds: str | None = Query(None, description="comma-separated event kinds"),
                   after: int = 0):
         f = _dir(study_id) / "trace.jsonl"
@@ -120,7 +134,7 @@ def create_app(runs_dir: str | Path = "runs") -> FastAPI:
         evs = [json.loads(x) for x in f.read_text().splitlines()[after:]]
         return [e for e in evs if want is None or e["kind"] in want]
 
-    @app.post("/api/studies/{study_id}/steer")
+    @app.post("/api/studies/{study_id}/steer", dependencies=guard)
     def steer_study(study_id: str, req: SteerRequest):
         d = _dir(study_id)
         st = _read_json(d / "status.json") or {}

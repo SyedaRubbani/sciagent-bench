@@ -54,7 +54,11 @@ class ExecutorSpec(BaseModel):
     folder: str = "slurm_logs"
 
 
+SCHEMA_VERSION = 1
+
+
 class StudySpec(BaseModel):
+    schema_version: Literal[1] = Field(SCHEMA_VERSION, description="spec format version")
     name: str
     simulator: str
     description: str = Field("", description="the research goal in the researcher's own words")

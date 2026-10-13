@@ -93,8 +93,30 @@ def _cmd_bench(a):
     planners = load_planners(a.planners)
     if a.only:
         planners = {k: v for k, v in planners.items() if k in a.only}
-    run_bench(a.tasks, planners, list(range(a.seed_start, a.seed_start + a.seeds)), a.budget, a.batch_size, a.out, keep_runs=a.keep_runs)
+    run_bench(a.tasks, planners, list(range(a.seed_start, a.seed_start + a.seeds)), a.budget, a.batch_size, a.out,
+              keep_runs=a.keep_runs, parallel=a.parallel)
     print((Path(a.out) / "results.md").read_text())
+
+
+def _cmd_analyze(a):
+    from .analysis import run
+
+    run(a.dirs, a.out)
+    print((Path(a.out) / "analysis.md").read_text())
+
+
+def _cmd_experiments(a):
+    from .experiments import run
+
+    status = run(a.profile, a.results, a.steps, a.force)
+    sys.exit(0 if all(not v.startswith("FAILED") for v in status.values()) else 1)
+
+
+def _cmd_report(a):
+    from .report import build
+
+    build(a.roots, a.out)
+    print(f"wrote {a.out}")
 
 
 def _cmd_steer(a):
@@ -106,8 +128,19 @@ def _cmd_steer(a):
         lo, hi = rng.split(",")
         bounds[name] = (float(lo), float(hi))
     pause = True if a.pause else (False if a.resume else None)
+    planner = None
+    if a.planner:
+        planner = {"kind": a.planner, "options": json.loads(a.planner_options or "{}")}
     print(json.dumps(steer(a.run_dir, pause=pause, stop=True if a.stop else None, note=a.note, bounds=bounds or None,
-                           compute_units=a.budget)))
+                           compute_units=a.budget, planner=planner)))
+
+
+def _cmd_resume(a):
+    from .orchestrator import Orchestrator
+
+    o = Orchestrator.resume(a.run_dir, verbose=True)
+    print(f"resuming {a.run_dir}: fast-forwarding {o._resumed_from} recorded runs")
+    _print_summary(o.run())
 
 
 def _cmd_trace(a):
@@ -143,6 +176,27 @@ def _cmd_mcp(a):
     from .mcp_server import main as mcp_main
 
     mcp_main(a.runs_dir)
+
+
+def _cmd_verify(a):
+    from .verify import run
+
+    r = run(a.device, a.mimo_draws, a.heat_max_n, a.out, a.heat_searches)
+    print((Path(a.out) / "references_verification.md").read_text())
+    return r
+
+
+def _cmd_gpu_bench(a):
+    from .gpu.throughput import run
+
+    run(a.device, a.out, a.quick)
+    print((Path(a.out) / "throughput.md").read_text())
+
+
+def _cmd_schema(a):
+    from .spec import StudySpec
+
+    print(json.dumps(StudySpec.model_json_schema(), indent=2))
 
 
 def _cmd_surrogate(a):
@@ -183,7 +237,25 @@ def main(argv=None):
     p.add_argument("--batch-size", type=int, default=4)
     p.add_argument("--out", default="bench_results")
     p.add_argument("--keep-runs", action="store_true")
+    p.add_argument("--parallel", type=int, default=1, help="studies run concurrently (lets vLLM batch LLM calls)")
     p.set_defaults(fn=_cmd_bench)
+
+    p = sub.add_parser("analyze", help="statistics over benchmark results (CIs, paired tests, win rates, AUC)")
+    p.add_argument("dirs", nargs="+")
+    p.add_argument("--out", default="analysis")
+    p.set_defaults(fn=_cmd_analyze)
+
+    p = sub.add_parser("experiments", help="run the full (resumable) experimental pipeline for a profile")
+    p.add_argument("--profile", default="kaggle-t4", choices=["kaggle-t4", "quick", "cpu-smoke", "cpu-full"])
+    p.add_argument("--results", default="results")
+    p.add_argument("--steps", nargs="+")
+    p.add_argument("--force", action="store_true")
+    p.set_defaults(fn=_cmd_experiments)
+
+    p = sub.add_parser("report", help="build the technical report from result directories")
+    p.add_argument("roots", nargs="+")
+    p.add_argument("--out", default="docs/TECHNICAL_REPORT.md")
+    p.set_defaults(fn=_cmd_report)
 
     p = sub.add_parser("steer", help="steer a running study")
     p.add_argument("run_dir")
@@ -193,7 +265,13 @@ def main(argv=None):
     p.add_argument("--note")
     p.add_argument("--bound", action="append", help="name=lo,hi (repeatable)")
     p.add_argument("--budget", type=float, help="new total compute budget")
+    p.add_argument("--planner", choices=["random", "sh", "bo", "llm"], help="redirect to another planner")
+    p.add_argument("--planner-options", help="JSON options for the new planner")
     p.set_defaults(fn=_cmd_steer)
+
+    p = sub.add_parser("resume", help="continue an interrupted study in place (fast-forwards recorded runs)")
+    p.add_argument("run_dir")
+    p.set_defaults(fn=_cmd_resume)
 
     p = sub.add_parser("trace", help="print a readable timeline of a run")
     p.add_argument("run_dir")
@@ -209,6 +287,23 @@ def main(argv=None):
     p.add_argument("--runs-dir", default="runs")
     p.set_defaults(fn=_cmd_mcp)
 
+    p = sub.add_parser("verify-references", help="verify reference optima with uncertainty (GPU-capable)")
+    p.add_argument("--device", default="auto")
+    p.add_argument("--mimo-draws", type=int, default=2_000_000)
+    p.add_argument("--heat-max-n", type=int, default=512)
+    p.add_argument("--heat-searches", type=int, default=5)
+    p.add_argument("--out", default="verification")
+    p.set_defaults(fn=_cmd_verify)
+
+    p = sub.add_parser("gpu-bench", help="kernel throughput: NumPy/SciPy vs torch on a device")
+    p.add_argument("--device", default="auto")
+    p.add_argument("--quick", action="store_true")
+    p.add_argument("--out", default="gpu_results")
+    p.set_defaults(fn=_cmd_gpu_bench)
+
+    p = sub.add_parser("schema", help="print the JSON Schema of a study spec (for editor validation)")
+    p.set_defaults(fn=_cmd_schema)
+
     p = sub.add_parser("surrogate", help="curate data, train / distil / quantise a surrogate")
     p.add_argument("action", choices=["make-data", "train", "report"])
     p.add_argument("--sim", default="reactor")
@@ -218,6 +313,7 @@ def main(argv=None):
     p.add_argument("--model-dir", default="surrogate_models")
     p.add_argument("--epochs", type=int, default=300)
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--device", default="auto", help="training device (cuda if available)")
     p.set_defaults(fn=_cmd_surrogate)
 
     a = ap.parse_args(argv)

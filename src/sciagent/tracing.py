@@ -76,9 +76,18 @@ def _git_sha() -> str | None:
         return None
 
 
+def _git_dirty() -> bool | None:
+    try:
+        out = subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"], stderr=subprocess.DEVNULL,
+                                      cwd=Path(__file__).parent, text=True)
+        return bool(out.strip())
+    except Exception:
+        return None
+
+
 def environment_info() -> dict:
     info = {"sciagent": __version__, "python": sys.version.split()[0], "platform": platform.platform(),
-            "git_sha": _git_sha()}
+            "git_sha": _git_sha(), "git_dirty": _git_dirty()}
     for mod in ("numpy", "scipy", "sklearn", "torch"):
         m = sys.modules.get(mod)
         if m is not None:

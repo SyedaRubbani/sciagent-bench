@@ -10,7 +10,9 @@ from .cache import run_key
 from .state import Plan, RunRequest, StudyState
 
 
-def check_plan(plan: Plan, state: StudyState) -> tuple[list[RunRequest], list[dict]]:
+def check_plan(plan: Plan, state: StudyState, reserve: bool = False) -> tuple[list[RunRequest], list[dict]]:
+    """Validate a proposal. With ``reserve=True`` each accepted run holds a ledger reservation
+    (``RunRequest.token``) that the orchestrator commits after execution or releases on failure."""
     sim = state.sim
     accepted: list[RunRequest] = []
     issues: list[dict] = []
@@ -52,5 +54,8 @@ def check_plan(plan: Plan, state: StudyState) -> tuple[list[RunRequest], list[di
             continue
         remaining -= cost
         seen_keys.add(key)
-        accepted.append(RunRequest(params, req.fidelity, req.why))
+        acc = RunRequest(params, req.fidelity, req.why)
+        if reserve:
+            acc.token = state.ledger.reserve(cost, ref=f"batch{state.batch}:run{j}")
+        accepted.append(acc)
     return accepted, issues

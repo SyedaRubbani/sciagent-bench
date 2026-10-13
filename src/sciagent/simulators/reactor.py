@@ -49,6 +49,27 @@ def _rhs(k1: float, k2: float):
     return f
 
 
+def integrate_euler(k1: float, k2: float, tau: float, n: int) -> float:
+    """Explicit Euler for B(tau); first-order accurate."""
+    a, b, dt = 1.0, 0.0, tau / n
+    for _ in range(n):
+        a, b = a - dt * k1 * a, b + dt * (k1 * a - k2 * b)
+    return float(b)
+
+
+def integrate_rk4(k1: float, k2: float, tau: float, n: int) -> float:
+    """Classical Runge-Kutta 4 for B(tau); fourth-order accurate."""
+    f = _rhs(k1, k2)
+    y, dt = np.array([1.0, 0.0]), tau / n
+    for _ in range(n):
+        s1 = f(0, y)
+        s2 = f(0, y + 0.5 * dt * s1)
+        s3 = f(0, y + 0.5 * dt * s2)
+        s4 = f(0, y + dt * s3)
+        y = y + dt / 6.0 * (s1 + 2 * s2 + 2 * s3 + s4)
+    return float(y[1])
+
+
 class ReactorSimulator(Simulator):
     name = "reactor"
     version = "1.0"
@@ -75,27 +96,12 @@ class ReactorSimulator(Simulator):
     def _evaluate(self, p, fidelity, rng):
         k1, k2 = rate_constants(p["T"], p["cat"])
         tau = p["tau"]
-        y = np.array([1.0, 0.0])
         if fidelity.name == "euler_coarse":
-            n = 6
-            dt = tau / n
-            f = _rhs(k1, k2)
-            for _ in range(n):
-                y = y + dt * f(0, y)
-            b = float(y[1])
+            b = integrate_euler(k1, k2, tau, 6)
         elif fidelity.name == "rk4_medium":
-            n = 40
-            dt = tau / n
-            f = _rhs(k1, k2)
-            for _ in range(n):
-                s1 = f(0, y)
-                s2 = f(0, y + 0.5 * dt * s1)
-                s3 = f(0, y + 0.5 * dt * s2)
-                s4 = f(0, y + dt * s3)
-                y = y + dt / 6.0 * (s1 + 2 * s2 + 2 * s3 + s4)
-            b = float(y[1])
+            b = integrate_rk4(k1, k2, tau, 40)
         else:
-            sol = solve_ivp(_rhs(k1, k2), (0.0, tau), y, method="BDF", rtol=1e-9, atol=1e-12)
+            sol = solve_ivp(_rhs(k1, k2), (0.0, tau), np.array([1.0, 0.0]), method="BDF", rtol=1e-9, atol=1e-12)
             b = float(sol.y[1, -1])
         unstable = not (-0.01 <= b <= 1.01)
         b_rep = float(np.clip(b, -1.0, 2.0))  # an unstable explicit solve is reported, not hidden

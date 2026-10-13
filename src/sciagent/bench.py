@@ -36,40 +36,63 @@ def load_planners(path: str | None) -> dict[str, dict]:
     return yaml.safe_load(Path(path).read_text())["planners"]
 
 
+def _one(task, pname, pcfg, seed, budget, batch_size, out, keep_runs):
+    cfg = dict(pcfg)
+    if cfg.get("llm"):
+        cfg["llm"] = LLMSpec.model_validate(cfg["llm"])
+    spec = StudySpec(name=f"{task}-{pname}-s{seed}", simulator=task, budget={"compute_units": budget},
+                     batch_size=batch_size, seed=seed, planner=PlannerSpec.model_validate(cfg))
+    run_dir = out / "runs" / spec.name if keep_runs else None
+    t0 = time.perf_counter()
+    try:
+        s = Orchestrator(spec, run_dir).run()
+        err = None
+    except Exception as e:  # keep the sweep going; record the failure
+        s, err = {}, f"{type(e).__name__}: {e}"
+    row = {"task": task, "planner": pname, "seed": seed, "budget": budget,
+           "regret": s.get("regret"), "incumbent_true": s.get("incumbent_true_objective"),
+           "n_runs": s.get("n_runs"), "spent": s.get("spent_compute"),
+           "runs_per_fidelity": json.dumps(s.get("runs_per_fidelity", {})),
+           "llm_tokens_in": s.get("llm_tokens_in"), "llm_tokens_out": s.get("llm_tokens_out"),
+           "llm_usd": s.get("llm_usd"), "wall_s": round(time.perf_counter() - t0, 3),
+           "stop_reason": s.get("stop_reason"), "results_digest": s.get("results_digest"), "error": err}
+    return row, s.get("curve", [])
+
+
 def run_bench(tasks: list[str], planners: dict[str, dict], seeds: list[int], budget: float, batch_size: int,
-              out_dir: str | Path, keep_runs: bool = False, verbose: bool = True) -> list[dict]:
+              out_dir: str | Path, keep_runs: bool = False, verbose: bool = True, parallel: int = 1) -> list[dict]:
+    """Run every (task, planner, seed). ``parallel`` > 1 runs studies in threads: results are identical
+    (each study is self-contained and seeded), and concurrent LLM requests let a vLLM server batch them."""
+    from concurrent.futures import ThreadPoolExecutor
+
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    jobs = [(t, p, c, s) for t in tasks for p, c in planners.items() for s in seeds]
     rows: list[dict] = []
     curves: dict = {}
-    for task in tasks:
-        for pname, pcfg in planners.items():
-            for seed in seeds:
-                cfg = dict(pcfg)
-                if cfg.get("llm"):
-                    cfg["llm"] = LLMSpec.model_validate(cfg["llm"])
-                spec = StudySpec(name=f"{task}-{pname}-s{seed}", simulator=task, budget={"compute_units": budget},
-                                 batch_size=batch_size, seed=seed, planner=PlannerSpec.model_validate(cfg))
-                run_dir = out / "runs" / spec.name if keep_runs else None
-                t0 = time.perf_counter()
-                try:
-                    s = Orchestrator(spec, run_dir).run()
-                    err = None
-                except Exception as e:  # keep the sweep going; record the failure
-                    s, err = {}, f"{type(e).__name__}: {e}"
-                row = {"task": task, "planner": pname, "seed": seed, "budget": budget,
-                       "regret": s.get("regret"), "incumbent_true": s.get("incumbent_true_objective"),
-                       "n_runs": s.get("n_runs"), "spent": s.get("spent_compute"),
-                       "runs_per_fidelity": json.dumps(s.get("runs_per_fidelity", {})),
-                       "llm_tokens_in": s.get("llm_tokens_in"), "llm_tokens_out": s.get("llm_tokens_out"),
-                       "llm_usd": s.get("llm_usd"), "wall_s": round(time.perf_counter() - t0, 3),
-                       "stop_reason": s.get("stop_reason"), "error": err}
-                rows.append(row)
-                curves.setdefault(task, {}).setdefault(pname, []).append(s.get("curve", []))
-                if verbose:
-                    rg = row["regret"]
-                    print(f"{task:8s} {pname:14s} seed {seed}: regret {rg if rg is None else f'{rg:.5f}'}"
-                          f"  runs {row['n_runs']}  {row['wall_s']}s" + (f"  ERROR {err}" if err else ""))
+
+    def report(row):
+        if verbose:
+            rg = row["regret"]
+            print(f"{row['task']:8s} {row['planner']:16s} seed {row['seed']}: regret {rg if rg is None else f'{rg:.5f}'}"
+                  f"  runs {row['n_runs']}  {row['wall_s']}s" + (f"  ERROR {row['error']}" if row["error"] else ""),
+                  flush=True)
+
+    if parallel > 1:
+        with ThreadPoolExecutor(parallel) as pool:
+            futs = [pool.submit(_one, t, p, c, s, budget, batch_size, out, keep_runs) for t, p, c, s in jobs]
+            results = []
+            for f in futs:
+                results.append(f.result())
+                report(results[-1][0])
+    else:
+        results = []
+        for t, p, c, s in jobs:
+            results.append(_one(t, p, c, s, budget, batch_size, out, keep_runs))
+            report(results[-1][0])
+    for (t, p, _c, _s), (row, curve) in zip(jobs, results):
+        rows.append(row)
+        curves.setdefault(t, {}).setdefault(p, []).append(curve)
     with open(out / "results.csv", "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[0]))
         w.writeheader()

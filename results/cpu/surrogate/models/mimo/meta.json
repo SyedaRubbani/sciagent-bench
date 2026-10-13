@@ -1,0 +1,51 @@
+{
+  "simulator": "mimo",
+  "sim_version": "1.0",
+  "features": [
+    "p_dbm",
+    "n_tx"
+  ],
+  "fidelities": [
+    "mc64",
+    "mc512",
+    "mc4096"
+  ],
+  "y_mu": 7.929253101348877,
+  "y_sd": 4.221068382263184,
+  "bounds": {
+    "p_dbm": [
+      0.0,
+      30.0
+    ],
+    "n_tx": [
+      1,
+      8
+    ]
+  },
+  "train_timings_s": {
+    "teacher_s": 21.231328271000166,
+    "student_distilled_s": 39.96035742999993,
+    "student_scratch_s": 36.9344108209998
+  },
+  "seed": 0,
+  "train_device": {
+    "device": "cpu",
+    "torch": "2.14.1+cu130"
+  },
+  "epochs": 300,
+  "widths": {
+    "teacher": [
+      128,
+      128,
+      128
+    ],
+    "student": [
+      32,
+      32
+    ],
+    "student_scratch": [
+      32,
+      32
+    ]
+  }
+}

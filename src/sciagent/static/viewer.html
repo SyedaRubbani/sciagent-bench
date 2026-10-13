@@ -63,6 +63,7 @@ button.b:focus-visible, input:focus-visible, select:focus-visible { outline: 2px
 pre { font: 12px/1.45 var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 10px; overflow-x: auto; margin: 0 }
 #msg { font-size: 12px; color: var(--muted); min-height: 1.2em }
 .empty { color: var(--muted); padding: 24px 0 }
+#tokenbox { max-width: 1280px; margin: 0 auto 16px; display: flex; gap: 12px; align-items: end; flex-wrap: wrap }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important } }
 </style>
 </head>
@@ -85,8 +86,24 @@ const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const fmt = (x, d = 4) => x == null ? "–" : (typeof x === "number" ? (Math.abs(x) >= 1000 ? x.toFixed(0) : Number(x.toPrecision(d)).toString()) : x);
 let current = null, timer = null;
+let token = ""; try { token = localStorage.getItem("sciagent_token") || ""; } catch (e) {}
+const hdrs = (extra = {}) => token ? { ...extra, Authorization: "Bearer " + token } : extra;
 
-async function getJSON(u) { const r = await fetch(u); if (!r.ok) throw new Error(`${r.status} ${await r.text()}`); return r.json(); }
+function askToken() {
+  if ($("#tokenbox")) return;
+  const box = document.createElement("form");
+  box.id = "tokenbox"; box.className = "panel";
+  box.innerHTML = `<label for="tok">This server requires an API token<input id="tok" type="password" autocomplete="off"></label><div class="btns"><button class="b" type="submit">Use token</button></div>`;
+  document.querySelector("header").after(box);
+  box.onsubmit = ev => { ev.preventDefault(); token = $("#tok").value.trim(); try { localStorage.setItem("sciagent_token", token); } catch (e) {} box.remove(); loadList(); if (current) render(); };
+}
+
+async function getJSON(u) {
+  const r = await fetch(u, { headers: hdrs() });
+  if (r.status === 401) { askToken(); throw new Error("unauthorised"); }
+  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  return r.json();
+}
 
 async function loadList() {
   const studies = await getJSON("/api/studies");
@@ -178,6 +195,7 @@ async function render() {
         <label for="bparam">Narrow a parameter<select id="bparam">${Object.keys(s.bounds || {}).map(k => `<option>${esc(k)}</option>`).join("")}</select></label>
         <label for="blo">Low<input id="blo" inputmode="decimal"></label>
         <label for="bhi">High<input id="bhi" inputmode="decimal"></label>
+        <label for="redir">Redirect to planner<select id="redir"><option value="">keep current</option><option>sh</option><option>bo</option><option>random</option><option>llm</option></select></label>
         <div class="btns"><button class="b" type="submit">Send</button>
           <button class="b ghost" type="button" id="pause">${s.status === "paused" ? "Resume" : "Pause"}</button>
           <button class="b ghost" type="button" id="stop">Stop study</button></div>
@@ -191,6 +209,7 @@ async function render() {
     f.onsubmit = async ev => { ev.preventDefault(); const body = {}; const n = $("#note").value.trim(); if (n) body.note = n;
       const lo = parseFloat($("#blo").value), hi = parseFloat($("#bhi").value);
       if (!isNaN(lo) && !isNaN(hi)) body.bounds = { [$("#bparam").value]: [lo, hi] };
+      if ($("#redir").value) body.planner = { kind: $("#redir").value };
       await steer(body, "Sent. The planner sees it before the next batch."); };
     $("#pause").onclick = () => steer({ pause: s.status !== "paused" }, s.status === "paused" ? "Resumed." : "Pausing after the current batch.");
     $("#stop").onclick = ev => { if (ev.target.dataset.armed) steer({ stop: true }, "Stopping after the current batch.");
@@ -199,13 +218,13 @@ async function render() {
 }
 
 async function steer(body, ok) {
-  try { await fetch(`/api/studies/${current}/steer`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+  try { await fetch(`/api/studies/${current}/steer`, { method: "POST", headers: hdrs({ "content-type": "application/json" }), body: JSON.stringify(body) })
       .then(async r => { if (!r.ok) throw new Error(await r.text()); });
     setTimeout(() => { const m = $("#msg"); if (m) m.textContent = ok; }, 50); }
   catch (e) { const m = $("#msg"); if (m) m.textContent = "Could not steer: " + e.message; }
 }
 
-loadList(); setInterval(loadList, 5000);
+loadList().catch(() => {}); setInterval(() => loadList().catch(() => {}), 5000);
 const h = location.hash.slice(1); if (h) select(h);
 </script>
 </body>

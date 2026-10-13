@@ -10,3 +10,8 @@ surrogate_models/
 slurm_logs/
 *.onnx
 *.pt
+results/**/dataset.csv
+results/**/cache/
+results/**/logs/
+results_bundle.zip
+*_bundle.zip

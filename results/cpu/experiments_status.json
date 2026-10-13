@@ -1,0 +1,7 @@
+{
+  "env": "ok (6s)",
+  "verify": "ok (334s)",
+  "gpu_bench": "ok (415s)",
+  "bench_cpu": "ok (282s)",
+  "surrogate": "ok (449s)"
+}

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sciagent-bench"
-version = "0.1.0"
+version = "0.2.0"
 description = "Budget-aware agentic planning of simulation campaigns for research labs: traceable, reproducible, benchmarked."
 readme = "README.md"
 license = { text = "MIT" }
@@ -25,7 +25,7 @@ surrogate = ["torch>=2.2", "onnx>=1.15", "onnxruntime>=1.17"]
 slurm = ["submitit>=1.5"]
 mcp = ["mcp>=1.2"]
 plot = ["matplotlib>=3.7"]
-dev = ["pytest>=7", "ruff>=0.4", "fastapi>=0.110", "httpx>=0.25", "submitit>=1.5", "matplotlib>=3.7"]
+dev = ["pytest>=7", "pytest-cov>=4", "hypothesis>=6", "ruff>=0.4", "fastapi>=0.110", "httpx>=0.25", "submitit>=1.5", "matplotlib>=3.7"]
 all = ["sciagent-bench[service,surrogate,slurm,mcp,plot]"]
 
 [project.scripts]

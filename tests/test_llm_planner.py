@@ -45,7 +45,7 @@ def test_llm_cost_budget_and_bo_fallback(make_spec):
     s = o.run()
     assert s["spent_compute"] > 0
     rationales = [e["data"]["rationale"] for e in o.tracer.events if e["kind"] == "plan"]
-    assert any(r.startswith("LLM budget exhausted -> BO fallback") for r in rationales)
+    assert any("-> BO fallback" in r for r in rationales)
 
 
 def test_prompt_contains_state_and_steering(make_spec):

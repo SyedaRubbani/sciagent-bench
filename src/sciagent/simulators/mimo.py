@@ -29,18 +29,20 @@ GAIN_OVER_NOISE = 100.0  # receive SNR (linear) per Watt transmitted -> 20 dB at
 RX_CORR = 0.3
 
 
-@lru_cache(maxsize=1)
-def _rx_corr_sqrt() -> np.ndarray:
-    idx = np.arange(NR)
-    R = RX_CORR ** np.abs(idx[:, None] - idx[None, :])
+@lru_cache(maxsize=16)
+def _rx_corr_sqrt(nr: int = NR, rho: float = RX_CORR) -> np.ndarray:
+    """Symmetric square root of the exponential receive-correlation matrix R_ij = rho^|i-j|."""
+    idx = np.arange(nr)
+    R = rho ** np.abs(idx[:, None] - idx[None, :])
     w, V = np.linalg.eigh(R)
     return (V * np.sqrt(w)) @ V.T
 
 
-def ergodic_capacity(snr: float, k: int, draws: int, rng: np.random.Generator) -> tuple[float, float]:
+def ergodic_capacity(snr: float, k: int, draws: int, rng: np.random.Generator, nr: int = NR,
+                     rho: float = RX_CORR) -> tuple[float, float]:
     """Return (mean, standard error) of capacity in bit/s/Hz."""
-    H = (rng.standard_normal((draws, NR, k)) + 1j * rng.standard_normal((draws, NR, k))) / np.sqrt(2)
-    H = _rx_corr_sqrt() @ H
+    H = (rng.standard_normal((draws, nr, k)) + 1j * rng.standard_normal((draws, nr, k))) / np.sqrt(2)
+    H = _rx_corr_sqrt(nr, rho) @ H
     G = np.eye(k) + (snr / k) * np.conj(np.swapaxes(H, 1, 2)) @ H  # k x k form (Sylvester)
     _, logdet = np.linalg.slogdet(G)
     c = logdet / np.log(2)

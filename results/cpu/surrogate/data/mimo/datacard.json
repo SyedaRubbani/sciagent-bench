@@ -1,0 +1,73 @@
+{
+  "simulator": {
+    "name": "mimo",
+    "version": "1.0",
+    "description": "Uplink MIMO link with 8 receive antennas. Choose transmit power (dBm) and the number of active transmit RF chains (1-8) to maximise energy efficiency in Mbit/J. Capacity grows with power and streams, but every active chain costs circuit power. Cheap fidelities are noisy Monte-Carlo estimates (unbiased); the metric 'stderr' reports their uncertainty.",
+    "objective": {
+      "name": "energy_efficiency_Mbit_per_J",
+      "sense": "maximize"
+    },
+    "params": [
+      {
+        "name": "p_dbm",
+        "low": 0.0,
+        "high": 30.0,
+        "kind": "float",
+        "unit": "dBm",
+        "description": "total transmit power"
+      },
+      {
+        "name": "n_tx",
+        "low": 1,
+        "high": 8,
+        "kind": "int",
+        "unit": "",
+        "description": "number of active transmit RF chains / streams"
+      }
+    ],
+    "fidelities": [
+      {
+        "name": "mc64",
+        "level": 0,
+        "cost": 1.0,
+        "notes": "64 Monte-Carlo channel draws; noisy, unbiased"
+      },
+      {
+        "name": "mc512",
+        "level": 1,
+        "cost": 4.0,
+        "notes": "512 draws"
+      },
+      {
+        "name": "mc4096",
+        "level": 2,
+        "cost": 16.0,
+        "notes": "4096 draws; standard error ~1% of the cheap estimate's"
+      }
+    ]
+  },
+  "rows": 12288,
+  "sha256": "f93cd5bfa36133aba3b77b1b7e013086f4d21de3d49ab47880562188c1021db7",
+  "curation": {
+    "generated": 12288,
+    "from_runs": 0,
+    "dropped_failed": 0,
+    "dropped_nonfinite": 0,
+    "dropped_duplicate": 0,
+    "dropped_unstable": 0
+  },
+  "splits": {
+    "train": 9769,
+    "val": 1274,
+    "test": 1245
+  },
+  "per_fidelity": {
+    "mc64": 4096,
+    "mc512": 4096,
+    "mc4096": 4096
+  },
+  "objective_range": [
+    0.7708660308998492,
+    14.673216982140936
+  ]
+}

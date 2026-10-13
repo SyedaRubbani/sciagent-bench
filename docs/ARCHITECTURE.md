@@ -22,6 +22,12 @@ flowchart LR
 
 ## Design decisions
 
+**Budget accounting is separate from planning.** A `BudgetLedger` reserves the cost of every run the guard
+accepts and commits it after execution (a cache hit commits zero), so `committed + reserved <= total` holds at every
+instant, even mid-batch and whatever an LLM proposes. Property-based tests throw random and adversarial proposals at
+the guard and the ledger. The LLM's USD cap is checked *before* each call with a worst-case estimate (prompt length
+plus `max_tokens`), so a call that could break the cap is never made.
+
 **Planners propose, the guard disposes.** Every planner, including an LLM, only returns a *proposal*. A
 deterministic guard enforces parameter bounds (including bounds the researcher narrowed mid-run), valid
 fidelities, batch size, the remaining compute budget, and de-duplication of deterministic runs. Every
@@ -44,6 +50,12 @@ suite does this for LLM and non-LLM planners.
 viewer (`sciagent serve`) and MCP tools (`study_trace`), so a researcher or another agent can audit and
 steer a run.
 
+**Redirect and resume.** A steering instruction can switch the planner mid-run; the new planner sees the full
+history. `sciagent resume` continues an interrupted study in place by fast-forwarding: the planner is driven through
+its earlier decisions again, each re-proposed run is answered from `runs.jsonl`, LLM calls from the cassette, and
+steering is re-applied at its original batch. The test suite simulates a preemption for each planner type and checks
+the resumed result is identical to an uninterrupted run.
+
 **Graceful degradation.** Malformed LLM output gets a bounded repair loop; repeated failure ends the
 campaign with a recorded reason instead of a crash; an exhausted LLM budget can fall back to BO.
 
@@ -58,5 +70,7 @@ campaign with a recorded reason instead of a crash; an exhausted LLM budget can 
 | `guard` | the guard changed a proposal | per-run action and reason |
 | `run` | a simulation finished | params, fidelity, seed, objective, metrics, cost, cached |
 | `execute` | a batch was dispatched | executor, jobs, cache hits, seconds |
-| `steer` / `pause` | researcher intervention | what was applied |
+| `steer` / `pause` | researcher intervention | what was applied, batch, replayed |
+| `resume` / `resume.diverged` | a study was resumed / the planner left the recorded path | recorded runs |
+| `interrupted` | the process was stopped (Ctrl-C, preemption) | batch |
 | `error` | the orchestrator itself failed | exception |

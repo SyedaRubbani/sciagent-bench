@@ -155,21 +155,22 @@ class _Wrapped:
         self.net, self.y_mu, self.y_sd = net, y_mu, y_sd
 
 
-def _fit(net, X, y, Xv, yv, epochs, lr, seed, soft=None, alpha=0.0):
+def _fit(net, X, y, Xv, yv, epochs, lr, seed, soft=None, alpha=0.0, device="cpu"):
     import torch
 
     torch.manual_seed(seed)
+    net.to(device)
     opt = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=1e-5)
     sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, epochs)
-    Xt, yt = torch.from_numpy(X), torch.from_numpy(y)[:, None]
-    st = None if soft is None else torch.from_numpy(soft)[:, None]
-    Xv_, yv_ = torch.from_numpy(Xv), torch.from_numpy(yv)[:, None]
+    Xt, yt = torch.from_numpy(X).to(device), torch.from_numpy(y)[:, None].to(device)
+    st = None if soft is None else torch.from_numpy(soft)[:, None].to(device)
+    Xv_, yv_ = torch.from_numpy(Xv).to(device), torch.from_numpy(yv)[:, None].to(device)
     best, best_state = float("inf"), None
     g = torch.Generator().manual_seed(seed)
     bs = 512
     for _ep in range(epochs):
         net.train()
-        perm = torch.randperm(len(Xt), generator=g)
+        perm = torch.randperm(len(Xt), generator=g).to(device)
         for i in range(0, len(Xt), bs):
             idx = perm[i: i + bs]
             pred = net(Xt[idx])
@@ -186,12 +187,16 @@ def _fit(net, X, y, Xv, yv, epochs, lr, seed, soft=None, alpha=0.0):
         if v < best:
             best, best_state = v, {k: t.clone() for k, t in net.state_dict().items()}
     net.load_state_dict(best_state)
+    net.to("cpu")
     return best
 
 
-def train(sim_name: str, data_dir, model_dir, epochs: int = 300, seed: int = 0) -> dict:
+def train(sim_name: str, data_dir, model_dir, epochs: int = 300, seed: int = 0, device: str = "cpu") -> dict:
     import torch
 
+    from ..gpu import device_info, pick_device
+
+    device = pick_device(device)
     torch.set_num_threads(max(1, torch.get_num_threads()))
     sim = get_simulator(sim_name)
     D = _load(sim, data_dir)
@@ -206,7 +211,7 @@ def train(sim_name: str, data_dir, model_dir, epochs: int = 300, seed: int = 0) 
 
     t0 = time.perf_counter()
     teacher = _mlp(d_in, [128, 128, 128])
-    _fit(teacher, Xtr, n(ytr), Xv, n(yv), epochs, 3e-3, seed)
+    _fit(teacher, Xtr, n(ytr), Xv, n(yv), epochs, 3e-3, seed, device=device)
     timings["teacher_s"] = time.perf_counter() - t0
 
     # distillation: student matches the teacher on many fresh inputs (cheap to label) + true labels
@@ -216,7 +221,7 @@ def train(sim_name: str, data_dir, model_dir, epochs: int = 300, seed: int = 0) 
     oh = np.eye(nf, dtype=np.float32)[rng.integers(0, nf, len(Xaug))]
     Xaug = np.hstack([Xaug, oh])
     with torch.no_grad():
-        teacher.eval()
+        teacher.eval().to("cpu")
         soft_aug = teacher(torch.from_numpy(Xaug)).numpy()[:, 0]
         soft_tr = teacher(torch.from_numpy(Xtr)).numpy()[:, 0]
     Xd = np.vstack([Xtr, Xaug])
@@ -224,18 +229,19 @@ def train(sim_name: str, data_dir, model_dir, epochs: int = 300, seed: int = 0) 
     sd_ = np.concatenate([soft_tr, soft_aug]).astype(np.float32)
     t0 = time.perf_counter()
     student = _mlp(d_in, [32, 32])
-    _fit(student, Xd, yd, Xv, n(yv), epochs, 3e-3, seed + 1, soft=sd_, alpha=0.5)
+    _fit(student, Xd, yd, Xv, n(yv), epochs, 3e-3, seed + 1, soft=sd_, alpha=0.5, device=device)
     timings["student_distilled_s"] = time.perf_counter() - t0
 
     t0 = time.perf_counter()
     scratch = _mlp(d_in, [32, 32])  # ablation: same small net, labels only, same number of gradient steps
     scratch_epochs = int(round(epochs * len(Xd) / len(Xtr)))
-    _fit(scratch, Xtr, n(ytr), Xv, n(yv), scratch_epochs, 3e-3, seed + 2)
+    _fit(scratch, Xtr, n(ytr), Xv, n(yv), scratch_epochs, 3e-3, seed + 2, device=device)
     timings["student_scratch_s"] = time.perf_counter() - t0
 
     meta = {"simulator": sim_name, "sim_version": sim.version, "features": [p.name for p in sim.params],
             "fidelities": [f.name for f in sim.fidelities], "y_mu": mu, "y_sd": sd,
             "bounds": {p.name: [p.low, p.high] for p in sim.params}, "train_timings_s": timings, "seed": seed,
+            "train_device": device_info(device),
             "epochs": epochs}
     for name, net in [("teacher", teacher), ("student", student), ("student_scratch", scratch)]:
         torch.save(net.state_dict(), out / f"{name}.pt")
@@ -361,7 +367,8 @@ def report(sim_name: str, data_dir, model_dir) -> dict:
     sim_us = 1e6 * float(np.median(ts))
     res = {"simulator": sim_name, "test_rows": int(len(yte)), "test_rows_top_fidelity": int((lte == top).sum()),
            "n_params": n_params, "simulator_top_fidelity_latency_us": sim_us, "models": rows,
-           "train_timings_s": meta["train_timings_s"], "torch": torch.__version__, "onnxruntime": ort.__version__}
+           "train_timings_s": meta["train_timings_s"], "train_device": meta.get("train_device"),
+           "torch": torch.__version__, "onnxruntime": ort.__version__}
     (out / "report.json").write_text(json.dumps(res, indent=2))
     (out / "report.md").write_text(_report_md(res))
     return res
@@ -386,7 +393,8 @@ def _report_md(r: dict) -> str:
     lines += ["", f"One top-fidelity simulator call: {r['simulator_top_fidelity_latency_us']:.0f} µs. The fastest "
               f"surrogate variant amortises to {best:.2f} µs per prediction in batch, i.e. ~"
               f"{r['simulator_top_fidelity_latency_us'] / best:,.0f}x cheaper per query.", "",
-              f"Environment: torch {r['torch']}, onnxruntime {r['onnxruntime']}."]
+              f"Trained on {(r.get('train_device') or {}).get('name', (r.get('train_device') or {}).get('device', 'cpu'))} "
+              f"in {sum(r['train_timings_s'].values()):.0f} s. Environment: torch {r['torch']}, onnxruntime {r['onnxruntime']}."]
     return "\n".join(lines) + "\n"
 
 
@@ -395,7 +403,7 @@ def cli(a):
         card = make_data(a.sim, a.n, a.runs, a.data_dir, a.seed)
         print(json.dumps({k: card[k] for k in ("rows", "curation", "splits", "per_fidelity")}, indent=2))
     elif a.action == "train":
-        meta = train(a.sim, a.data_dir, a.model_dir, a.epochs, a.seed)
+        meta = train(a.sim, a.data_dir, a.model_dir, a.epochs, a.seed, a.device)
         print(json.dumps(meta["train_timings_s"], indent=2))
     else:
         r = report(a.sim, a.data_dir, a.model_dir)

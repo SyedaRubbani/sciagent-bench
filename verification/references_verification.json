@@ -1,0 +1,156 @@
+{
+  "device": {
+    "device": "cpu",
+    "torch": "2.14.1+cu130"
+  },
+  "reactor": {
+    "optimum": 0.6522580255633719,
+    "argmax": {
+      "T": 320.5044080745029,
+      "tau": 6.8189525992494,
+      "cat": 0.5915285317689096
+    },
+    "grad_norm_scaled": 1.340383919034086e-06,
+    "hessian_eigenvalues_scaled": [
+      -31.758377974334955,
+      -0.17664589223649182,
+      -0.12137290382539855
+    ],
+    "is_strict_local_max": true,
+    "exact": true,
+    "note": "closed-form objective; interior stationary point with negative-definite Hessian"
+  },
+  "heat": {
+    "reference": -0.5091652760163792,
+    "best_of_searches": -0.5091652759279479,
+    "search_values": [
+      -0.5091652759288213,
+      -0.5091652759291699,
+      -0.5091652759287831,
+      -0.5091652759279479,
+      -0.5091652762943749
+    ],
+    "search_spread": 3.6642699985378613e-10,
+    "reference_minus_best_search": -8.843126231283804e-11,
+    "searches": [
+      {
+        "seed": 100,
+        "value": -0.5091652759288213,
+        "argmax": [
+          0.5226177072008482,
+          0.5035450082094297,
+          0.04140733244309086
+        ],
+        "seconds": 37.72830297600012
+      },
+      {
+        "seed": 101,
+        "value": -0.5091652759291699,
+        "argmax": [
+          0.5226170079392825,
+          0.503546066498094,
+          0.041407251057834354
+        ],
+        "seconds": 38.86215389799963
+      },
+      {
+        "seed": 102,
+        "value": -0.5091652759287831,
+        "argmax": [
+          0.5226176545055947,
+          0.5035452588956189,
+          0.041407047492272836
+        ],
+        "seconds": 38.11018329799981
+      },
+      {
+        "seed": 103,
+        "value": -0.5091652759279479,
+        "argmax": [
+          0.5226176120176554,
+          0.5035451942399136,
+          0.0414072528958393
+        ],
+        "seconds": 38.199232959000256
+      },
+      {
+        "seed": 104,
+        "value": -0.5091652762943749,
+        "argmax": [
+          0.5226217538833269,
+          0.5035412179452808,
+          0.04140399623473132
+        ],
+        "seconds": 37.92057519299988
+      }
+    ],
+    "convergence": [
+      {
+        "n": 32,
+        "objective": -0.4851970278760422,
+        "cg_iterations": 125,
+        "rel_residual": 3.391455625215927e-11,
+        "seconds": 0.01404825500003426
+      },
+      {
+        "n": 64,
+        "objective": -0.5091652760168793,
+        "cg_iterations": 250,
+        "rel_residual": 3.5586691033854066e-11,
+        "seconds": 0.030304053999770986
+      },
+      {
+        "n": 128,
+        "objective": -0.5217608628488043,
+        "cg_iterations": 500,
+        "rel_residual": 5.130349353409153e-11,
+        "seconds": 0.11811480799997298
+      },
+      {
+        "n": 256,
+        "objective": -0.5213996819518747,
+        "cg_iterations": 1000,
+        "rel_residual": 6.04157745496959e-11,
+        "seconds": 0.6715904659999978
+      },
+      {
+        "n": 512,
+        "objective": -0.5213485588998928,
+        "cg_iterations": 2000,
+        "rel_residual": 8.102350821769149e-11,
+        "seconds": 8.918211615000018
+      }
+    ],
+    "device": "cpu",
+    "observed_order": 2.820675718799695,
+    "richardson_continuum": -0.5213569881865131,
+    "grid64_discretisation_error": 0.012191712169633773,
+    "note": "the benchmark task is *defined* by the grid64 solver; the convergence study quantifies how far that definition is from the continuum problem"
+  },
+  "mimo": {
+    "reference_40k_estimator": 14.447006370884596,
+    "argmax": {
+      "p_dbm": 22.677708992067178,
+      "n_tx": 6
+    },
+    "high_precision_value": 14.447904443366344,
+    "high_precision_stderr": 0.0005870992932961289,
+    "ci95": [
+      14.446753728751483,
+      14.449055157981205
+    ],
+    "draws": 2000000,
+    "seconds": 11.299605584000346,
+    "estimator_bias_40k_vs_high_precision": -0.0008980724817480024,
+    "runner_up": {
+      "n_tx": 7,
+      "p_dbm": 23.25,
+      "value_40k": 14.40486992258099
+    },
+    "gap_to_runner_up": 0.04800483442825607,
+    "gap_stderr_batch_means": 0.000493130265379802,
+    "gap_z": 97.34716726681421,
+    "device": "cpu",
+    "note": "scoring uses the fixed-seed 40k-draw estimator as the task's ground truth; this records how close that estimator is to the infinite-draw value"
+  }
+}

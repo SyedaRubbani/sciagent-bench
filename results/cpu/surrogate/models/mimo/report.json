@@ -1,0 +1,84 @@
+{
+  "simulator": "mimo",
+  "test_rows": 1245,
+  "test_rows_top_fidelity": 403,
+  "n_params": {
+    "teacher": 33921,
+    "student": 1281,
+    "student_scratch": 1281
+  },
+  "simulator_top_fidelity_latency_us": 16019.603499898949,
+  "models": [
+    {
+      "model": "teacher (torch fp32)",
+      "mae_all": 0.036706145852804184,
+      "r2_all": 0.9998264492348956,
+      "mae_top_fidelity": 0.017920494079589844,
+      "r2_top_fidelity": 0.999960181559225,
+      "size_bytes": 138765,
+      "latency_b1_us": 53.94600020736107,
+      "latency_b4096_ms": 6.706860000122106
+    },
+    {
+      "model": "student distilled (torch fp32)",
+      "mae_all": 0.036838024854660034,
+      "r2_all": 0.9998270107486451,
+      "mae_top_fidelity": 0.018613634631037712,
+      "r2_top_fidelity": 0.9999644455416833,
+      "size_bytes": 7829,
+      "latency_b1_us": 62.37300021894043,
+      "latency_b4096_ms": 0.6724375002704619
+    },
+    {
+      "model": "student from scratch (torch fp32)",
+      "mae_all": 0.032888952642679214,
+      "r2_all": 0.9998491251710101,
+      "mae_top_fidelity": 0.01237946655601263,
+      "r2_top_fidelity": 0.999985738001104,
+      "size_bytes": 8245,
+      "latency_b1_us": 57.2654998904909,
+      "latency_b4096_ms": 0.4872810000051686
+    },
+    {
+      "model": "student distilled (torch int8 dynamic)",
+      "mae_all": 0.16922317445278168,
+      "r2_all": 0.9974346952476498,
+      "mae_top_fidelity": 0.16193683445453644,
+      "r2_top_fidelity": 0.9977751723982815,
+      "size_bytes": 6143,
+      "latency_b1_us": 174.58599950259668,
+      "latency_b4096_ms": 0.9222629996656906
+    },
+    {
+      "model": "student distilled (ONNX Runtime fp32)",
+      "mae_all": 0.03683803230524063,
+      "r2_all": 0.9998270104341019,
+      "mae_top_fidelity": 0.018613675609230995,
+      "r2_top_fidelity": 0.9999644453011499,
+      "size_bytes": 5923,
+      "latency_b1_us": 11.35950014941045,
+      "latency_b4096_ms": 0.3624954997576424
+    },
+    {
+      "model": "student distilled (ONNX Runtime int8)",
+      "mae_all": 0.12822562456130981,
+      "r2_all": 0.9984928324521113,
+      "mae_top_fidelity": 0.1114453598856926,
+      "r2_top_fidelity": 0.9989545311791459,
+      "size_bytes": 4843,
+      "latency_b1_us": 26.478000108909328,
+      "latency_b4096_ms": 0.6953214997338364
+    }
+  ],
+  "train_timings_s": {
+    "teacher_s": 21.231328271000166,
+    "student_distilled_s": 39.96035742999993,
+    "student_scratch_s": 36.9344108209998
+  },
+  "train_device": {
+    "device": "cpu",
+    "torch": "2.14.1+cu130"
+  },
+  "torch": "2.14.1+cu130",
+  "onnxruntime": "1.29.0"
+}

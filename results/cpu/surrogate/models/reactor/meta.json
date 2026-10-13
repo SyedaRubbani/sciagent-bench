@@ -1,0 +1,56 @@
+{
+  "simulator": "reactor",
+  "sim_version": "1.0",
+  "features": [
+    "T",
+    "tau",
+    "cat"
+  ],
+  "fidelities": [
+    "euler_coarse",
+    "rk4_medium",
+    "bdf_fine"
+  ],
+  "y_mu": 0.19397521018981934,
+  "y_sd": 0.2952950894832611,
+  "bounds": {
+    "T": [
+      300.0,
+      420.0
+    ],
+    "tau": [
+      0.05,
+      10.0
+    ],
+    "cat": [
+      0.0,
+      1.0
+    ]
+  },
+  "train_timings_s": {
+    "teacher_s": 16.467246780000096,
+    "student_distilled_s": 33.772832539000774,
+    "student_scratch_s": 30.157738494000114
+  },
+  "seed": 0,
+  "train_device": {
+    "device": "cpu",
+    "torch": "2.14.1+cu130"
+  },
+  "epochs": 300,
+  "widths": {
+    "teacher": [
+      128,
+      128,
+      128
+    ],
+    "student": [
+      32,
+      32
+    ],
+    "student_scratch": [
+      32,
+      32
+    ]
+  }
+}

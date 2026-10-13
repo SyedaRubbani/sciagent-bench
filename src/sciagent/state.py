@@ -7,6 +7,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from .budget import BudgetLedger
 from .simulators.base import Param, Simulator
 from .spec import StudySpec
 
@@ -16,6 +17,7 @@ class RunRequest:
     params: dict[str, Any]
     fidelity: str
     why: str = ""
+    token: int | None = None  # budget reservation held between guard and execution
 
 
 @dataclass
@@ -56,12 +58,11 @@ class StudyState:
         self.sim = sim
         self.history: list[RunRecord] = []
         self.batch = 0
-        self.spent_compute = 0.0
+        self.ledger = BudgetLedger(spec.budget.compute_units)
         self.spent_usd = 0.0
         self.tokens_in = 0
         self.tokens_out = 0
         self.notes: list[str] = []
-        self.compute_budget = spec.budget.compute_units
         self.bounds: dict[str, tuple[float, float]] = {}
         for p in sim.params:
             lo, hi = spec.bounds.get(p.name, (p.low, p.high))
@@ -72,7 +73,15 @@ class StudyState:
     # --- views ---------------------------------------------------------------
     @property
     def remaining_compute(self) -> float:
-        return self.compute_budget - self.spent_compute
+        return self.ledger.remaining
+
+    @property
+    def spent_compute(self) -> float:
+        return self.ledger.committed
+
+    @property
+    def compute_budget(self) -> float:
+        return self.ledger.total
 
     def effective_params(self) -> list[Param]:
         return [Param(p.name, *self.bounds[p.name], kind=p.kind, unit=p.unit, description=p.description)
