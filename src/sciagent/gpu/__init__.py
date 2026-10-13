@@ -9,18 +9,22 @@ from __future__ import annotations
 
 
 def pick_device(device: str = "auto") -> str:
-    import torch
-
     if device != "auto":
         return device
+    try:
+        import torch
+    except ImportError:  # torch is optional; CPU paths still work
+        return "cpu"
     if torch.cuda.is_available():
         return "cuda"
     return "cpu"
 
 
 def device_info(device: str) -> dict:
-    import torch
-
+    try:
+        import torch
+    except ImportError:
+        return {"device": device, "torch": None}
     info = {"device": device, "torch": torch.__version__}
     if device.startswith("cuda") and torch.cuda.is_available():
         i = torch.device(device).index or 0
