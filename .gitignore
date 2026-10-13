@@ -16,3 +16,4 @@ results/**/logs/
 results_bundle.zip
 *_bundle.zip
 !results/**/models/*/student.onnx
+verification/
