@@ -4,6 +4,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false   # let both Python versions finish so a failure on one is visible on the other
       matrix:
         python: ["3.10", "3.12"]
     steps:
@@ -17,7 +18,7 @@ jobs:
       - name: Notebooks are generated from build_notebooks.py
         run: python notebooks/build_notebooks.py && git diff --exit-code notebooks/
       - name: Tests with coverage
-        run: pytest -q --cov=sciagent --cov-report=term --cov-report=xml
+        run: pytest -q -rfE --cov=sciagent --cov-report=term --cov-report=xml --junitxml=junit.xml
       - name: Replay check
         run: |
           sciagent run studies/reactor.yaml --planner llm --record --budget 64 --out runs/ci
@@ -29,6 +30,7 @@ jobs:
         with:
           name: ci-results-${{ matrix.python }}
           path: |
+            junit.xml
             ci_results/report/TECHNICAL_REPORT.md
             ci_results/experiments_status.json
             coverage.xml
@@ -40,7 +42,8 @@ jobs:
       - run: docker build -t sciagent-bench .
       - run: |
           docker run -d -p 8000:8000 -e SCIAGENT_API_TOKEN=ci --name sciagent-ci sciagent-bench
-          for i in $(seq 30); do curl -sf localhost:8000/api/health && break; sleep 1; done
+          for i in $(seq 60); do curl -sf localhost:8000/api/health && break; sleep 1; done || true
+          docker logs sciagent-ci
           test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8000/api/studies)" = "401"
           curl -sf -X POST localhost:8000/api/studies -H 'Authorization: Bearer ci' -H 'content-type: application/json' \
             -d '{"name":"docker","simulator":"reactor","budget":{"compute_units":40}}'

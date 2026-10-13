@@ -42,13 +42,18 @@ class Provider:
         raise NotImplementedError
 
 
+def _sleep(seconds: float) -> None:
+    """Back-off pause between retries (a separate function so tests can skip the wait)."""
+    time.sleep(seconds)
+
+
 def _post_with_retry(url: str, headers: dict, body: dict, timeout: float, tries: int = 4) -> dict:
     delay = 2.0
     for attempt in range(tries):
         try:
             r = httpx.post(url, headers=headers, json=body, timeout=timeout)
             if r.status_code in (429, 500, 502, 503, 529) and attempt < tries - 1:
-                time.sleep(delay)
+                _sleep(delay)
                 delay *= 2
                 continue
             r.raise_for_status()
@@ -56,7 +61,7 @@ def _post_with_retry(url: str, headers: dict, body: dict, timeout: float, tries:
         except httpx.TransportError:
             if attempt == tries - 1:
                 raise
-            time.sleep(delay)
+            _sleep(delay)
             delay *= 2
     raise RuntimeError("unreachable")
 

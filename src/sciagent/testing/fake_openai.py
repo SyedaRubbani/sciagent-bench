@@ -59,10 +59,11 @@ def serve_in_thread(port: int = 0, fail_every: int = 0):
     server = uvicorn.Server(uvicorn.Config(create_app(fail_every), host="127.0.0.1", port=port, log_level="warning"))
     t = threading.Thread(target=server.run, daemon=True)
     t.start()
-    for _ in range(100):
-        if server.started:
-            break
+    deadline = time.monotonic() + 30  # generous for slow CI runners
+    while not server.started and time.monotonic() < deadline:
         time.sleep(0.05)
+    if not server.started:
+        raise RuntimeError("fake OpenAI server did not start")
     return f"http://127.0.0.1:{port}/v1", server
 
 

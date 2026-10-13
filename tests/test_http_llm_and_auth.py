@@ -12,8 +12,8 @@ from sciagent.testing.fake_openai import serve_in_thread  # noqa: E402
 def test_llm_planner_over_real_http_with_retries(make_spec, monkeypatch):
     from sciagent.llm import providers
 
-    monkeypatch.setattr(providers.time, "sleep", lambda s: None)  # fast retries
     url, server = serve_in_thread(fail_every=4)  # every 4th request returns 503
+    monkeypatch.setattr(providers, "_sleep", lambda s: None)  # skip back-off waits, not time.sleep globally
     try:
         spec = make_spec("reactor", planner={"kind": "llm", "llm": {"provider": "openai", "base_url": url,
                                                                     "model": "fake"}}, budget=80)

@@ -20,7 +20,7 @@ def test_service_end_to_end(tmp_path):
                                      "planner": {"kind": "sh"}})
     assert r.status_code == 201
     sid = r.json()["id"]
-    for _ in range(100):
+    for _ in range(600):  # up to 60 s on slow CI runners
         st = c.get(f"/api/studies/{sid}").json()
         if st["status"] and st["status"]["status"] == "finished":
             break
