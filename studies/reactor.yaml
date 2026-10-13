@@ -1,0 +1,18 @@
+# A researcher-facing study spec. Everything the agent may do is bounded by this file.
+name: reactor-yield
+simulator: reactor
+description: >
+  We want the operating point of our batch reactor that maximises net yield of the intermediate B.
+  Catalyst is expensive; we would rather not run hotter than ~380 K in the pilot plant.
+budget:
+  compute_units: 300      # declared simulator cost (bdf_fine = 16, rk4_medium = 4, euler_coarse = 1)
+  max_batches: 40
+batch_size: 4
+seed: 0
+bounds:
+  T: [300, 380]           # researcher constraint, enforced by the guard
+planner:
+  kind: sh                # random | sh | bo | llm
+executor:
+  kind: local
+  workers: 1

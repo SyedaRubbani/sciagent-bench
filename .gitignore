@@ -1,0 +1,12 @@
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+runs/
+bench_results/
+ci_bench/
+surrogate_data/
+surrogate_models/
+slurm_logs/
+*.onnx
+*.pt

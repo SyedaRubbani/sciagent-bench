@@ -1,0 +1,27 @@
+# Planner line-up for `sciagent bench --planners bench/planners.example.yaml`.
+# Closed and open models are configured side by side; every entry runs on the same tasks, budgets and seeds.
+planners:
+  random: {kind: random}
+  sh: {kind: sh}
+  bo: {kind: bo}
+  scripted-mf: {kind: llm, llm: {provider: mock}}    # offline scripted multi-fidelity policy via the agent pipeline (not an LLM)
+
+  claude-sonnet:
+    kind: llm
+    advisors: [bo]
+    llm: {provider: anthropic, model: claude-sonnet-5-5, api_key_env: ANTHROPIC_API_KEY,
+          price_in_per_mtok: 0.0, price_out_per_mtok: 0.0}   # fill in current prices
+
+  gpt:
+    kind: llm
+    advisors: [bo]
+    llm: {provider: openai, model: YOUR-OPENAI-MODEL, api_key_env: OPENAI_API_KEY}   # any current chat model
+
+  qwen-7b-vllm:                                      # open model on your own GPU: vllm serve Qwen/Qwen2.5-7B-Instruct --port 8001
+    kind: llm
+    advisors: [bo]
+    llm: {provider: openai, base_url: "http://localhost:8001/v1", model: Qwen/Qwen2.5-7B-Instruct}
+
+  distilled-planner:                                 # the LoRA-distilled small model from recipes/distill_planner_lora
+    kind: llm
+    llm: {provider: openai, base_url: "http://localhost:8002/v1", model: sciagent-planner-0.5b}

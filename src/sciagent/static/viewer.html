@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SciAgent Run Viewer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: study list rail on the left, campaign instrument panel on the right (stacks on phones). */
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --fg: #18202b; --muted: #5b6676; --line: #dfe3ea;
+  --accent: #1f6f8b; --f0: #a9d3e0; --f1: #4b9bb7; --f2: #134b61;
+  --good: #2e7d4f; --warn: #a86512; --bad: #b3362f;
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f141b; --panel: #161d26; --fg: #e3e8ef; --muted: #93a0b2; --line: #273241;
+  --accent: #5cb6d4; --f0: #2c5566; --f1: #4b9bb7; --f2: #a9dff0;
+  --good: #5fbf86; --warn: #e0a24d; --bad: #e57068; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f141b; --panel: #161d26; --fg: #e3e8ef; --muted: #93a0b2; --line: #273241;
+  --accent: #5cb6d4; --f0: #2c5566; --f1: #4b9bb7; --f2: #a9dff0;
+  --good: #5fbf86; --warn: #e0a24d; --bad: #e57068; color-scheme: dark }
+* { box-sizing: border-box }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--sans); padding-inline: 16px; padding-block: 16px 40px }
+header { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; max-width: 1280px; margin: 0 auto 16px }
+h1 { font-size: 18px; font-weight: 600; margin: 0 }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; font-weight: 500 }
+.sub { color: var(--muted) }
+main { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 16px; max-width: 1280px; margin: 0 auto }
+@media (max-width: 820px) { main { grid-template-columns: minmax(0, 1fr) } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 14px; min-width: 0 }
+#list { display: flex; flex-direction: column; gap: 2px; max-height: 78vh; overflow-y: auto }
+.item { all: unset; cursor: pointer; display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 8px; border-radius: 4px }
+.item:hover, .item:focus-visible { background: color-mix(in srgb, var(--accent) 10%, transparent) }
+.item:focus-visible { outline: 2px solid var(--accent) }
+.item[aria-current="true"] { background: color-mix(in srgb, var(--accent) 16%, transparent) }
+.item .id { font: 12px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.item .meta { grid-column: 1 / -1; color: var(--muted); font-size: 12px }
+.pill { font: 11px var(--mono); padding: 1px 7px; border-radius: 99px; border: 1px solid currentColor; white-space: nowrap; align-self: start }
+.s-running { color: var(--accent) } .s-paused { color: var(--warn) } .s-finished { color: var(--good) } .s-failed { color: var(--bad) } .s-unknown { color: var(--muted) }
+#detail { display: flex; flex-direction: column; gap: 16px; min-width: 0 }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px }
+.stat .k { color: var(--muted); font-size: 12px } .stat .v { font: 500 16px var(--mono); font-variant-numeric: tabular-nums; overflow-wrap: anywhere }
+.meter { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 4px } .meter > i { display: block; height: 100%; background: var(--accent) }
+.chartwrap { overflow-x: auto } svg text { fill: var(--muted); font: 11px var(--mono) }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font: 12px var(--mono); color: var(--muted) }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; vertical-align: -1px }
+.timeline { display: flex; flex-direction: column; gap: 6px; max-height: 420px; overflow-y: auto; font-size: 13px }
+.ev { display: grid; grid-template-columns: 64px 70px minmax(0, 1fr); gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--line) }
+.ev .sid { font: 11px var(--mono); color: var(--muted) } .ev .kind { font: 500 11px var(--mono); text-transform: uppercase }
+.k-plan { color: var(--accent) } .k-guard { color: var(--warn) } .k-steer, .k-pause { color: var(--good) } .k-error { color: var(--bad) } .k-llm { color: var(--muted) }
+.ev .txt { overflow-wrap: anywhere }
+form { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; align-items: end }
+label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted) }
+input, select { font: 13px var(--sans); padding: 7px 8px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--fg) }
+.btns { display: flex; gap: 8px; flex-wrap: wrap }
+button.b { font: 500 13px var(--sans); padding: 7px 12px; border-radius: 4px; border: 1px solid var(--accent); background: var(--accent); color: var(--panel); cursor: pointer }
+button.b.ghost { background: transparent; color: var(--accent) }
+button.b:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px }
+pre { font: 12px/1.45 var(--mono); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 10px; overflow-x: auto; margin: 0 }
+#msg { font-size: 12px; color: var(--muted); min-height: 1.2em }
+.empty { color: var(--muted); padding: 24px 0 }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important } }
+</style>
+</head>
+<body>
+<header>
+  <h1>SciAgent run viewer</h1>
+  <span class="sub">Every planner decision, guard intervention and simulation in a campaign, live.</span>
+</header>
+<main>
+  <section class="panel">
+    <h2>Studies</h2>
+    <div id="list"><div class="empty">No studies yet. Start one with <code>sciagent run studies/reactor.yaml --out runs/demo</code> or POST /api/studies.</div></div>
+  </section>
+  <section id="detail">
+    <div class="panel empty" id="placeholder">Select a study to see its budget, results and decision trace.</div>
+  </section>
+</main>
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt = (x, d = 4) => x == null ? "–" : (typeof x === "number" ? (Math.abs(x) >= 1000 ? x.toFixed(0) : Number(x.toPrecision(d)).toString()) : x);
+let current = null, timer = null;
+
+async function getJSON(u) { const r = await fetch(u); if (!r.ok) throw new Error(`${r.status} ${await r.text()}`); return r.json(); }
+
+async function loadList() {
+  const studies = await getJSON("/api/studies");
+  const list = $("#list");
+  if (!studies.length) return;
+  list.innerHTML = studies.map(s => `
+    <button class="item" data-id="${esc(s.id)}" aria-current="${s.id === current}">
+      <span class="id" title="${esc(s.id)}">${esc(s.id)}</span>
+      <span class="pill s-${esc(s.status)}">${esc(s.status)}</span>
+      <span class="meta">${esc(s.planner ?? "")} · ${esc(s.simulator ?? "")} · ${fmt(s.spent_compute, 4)}/${fmt(s.compute_budget, 4)} units${s.regret != null ? " · regret " + fmt(s.regret, 3) : ""}</span>
+    </button>`).join("");
+  list.querySelectorAll(".item").forEach(b => b.onclick = () => select(b.dataset.id));
+}
+
+async function select(id) { current = id; clearInterval(timer); await render(); timer = setInterval(render, 2000); loadList(); }
+
+function chart(runs, fids) {
+  const ok = runs.filter(r => r.ok && r.objective != null);
+  if (!ok.length) return '<div class="empty">No completed runs yet.</div>';
+  const W = 760, H = 260, L = 64, R = 16, T = 12, B = 34;
+  let cum = 0; const pts = runs.map(r => { cum += r.cost; return { x: cum, r }; });
+  const ys = ok.map(r => r.objective);
+  let y0 = Math.min(...ys), y1 = Math.max(...ys); if (y0 === y1) { y0 -= 1; y1 += 1; }
+  const pad = (y1 - y0) * 0.06; y0 -= pad; y1 += pad;
+  const xmax = Math.max(cum, 1);
+  const sx = x => L + (W - L - R) * x / xmax, sy = y => T + (H - T - B) * (1 - (y - y0) / (y1 - y0));
+  const color = lvl => `var(--f${Math.min(lvl, 2)})`;
+  let g = "";
+  for (let i = 0; i <= 4; i++) { const yv = y0 + (y1 - y0) * i / 4, yy = sy(yv);
+    g += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="var(--line)"/><text x="${L - 6}" y="${yy + 4}" text-anchor="end">${fmt(yv, 3)}</text>`; }
+  for (let i = 0; i <= 4; i++) { const xv = xmax * i / 4; g += `<text x="${sx(xv)}" y="${H - B + 16}" text-anchor="middle">${fmt(xv, 3)}</text>`; }
+  g += `<text x="${(L + W - R) / 2}" y="${H - 4}" text-anchor="middle">cumulative compute units</text>`;
+  // incumbent step line: best at the highest fidelity seen so far
+  let inc = null, path = "";
+  pts.forEach(({ x, r }) => {
+    if (r.ok && r.objective != null && (!inc || r.fidelity_level > inc.fidelity_level || (r.fidelity_level === inc.fidelity_level && r.objective > inc.objective))) inc = r;
+    if (inc) path += (path ? "L" : "M") + sx(x) + "," + sy(inc.objective);
+  });
+  const dots = pts.filter(p => p.r.ok && p.r.objective != null).map(({ x, r }) =>
+    `<circle cx="${sx(x)}" cy="${sy(r.objective)}" r="3.2" fill="${color(r.fidelity_level)}" opacity=".9"><title>#${r.index} ${r.fidelity}: ${fmt(r.objective, 5)}\n${esc(JSON.stringify(r.params))}</title></circle>`).join("");
+  const legend = fids.map((f, i) => `<span><i class="sw" style="background:var(--f${Math.min(i, 2)})"></i>${esc(f.name)} (cost ${f.cost})</span>`).join("")
+    + `<span><i class="sw" style="background:var(--fg);border-radius:0;height:2px;vertical-align:3px"></i>reported incumbent</span>`;
+  return `<div class="chartwrap"><svg viewBox="0 0 ${W} ${H}" width="100%" style="min-width:520px" role="img" aria-label="objective per run against cumulative cost">${g}${dots}<path d="${path}" fill="none" stroke="var(--fg)" stroke-width="1.6"/></svg></div><div class="legend">${legend}</div>`;
+}
+
+function timeline(evs) {
+  const rows = evs.filter(e => ["plan", "guard", "steer", "pause", "error", "llm.call"].includes(e.kind)).slice(-200).reverse().map(e => {
+    const d = e.data; let txt = "", k = e.kind;
+    if (k === "plan") txt = `<b>${esc(d.planner)}</b> proposed ${d.n_proposed} run(s): ${esc(d.rationale)}`;
+    else if (k === "guard") txt = d.issues.map(i => `run ${i.run} ${esc(i.action)}: ${esc(i.reason)}`).join("<br>");
+    else if (k === "steer") txt = "applied " + esc(JSON.stringify(d.applied));
+    else if (k === "pause") txt = "paused by researcher";
+    else if (k === "error") txt = esc(d.error);
+    else { k = "llm"; txt = `${esc(d.model)} · attempt ${d.attempt} · ${d.tokens_in} in / ${d.tokens_out} out tokens${d.replayed ? " · replayed" : ""}`; }
+    return `<div class="ev"><span class="sid">${esc(e.span_id)}</span><span class="kind k-${k.replace(".", "")}">${esc(k)}</span><span class="txt">${txt}</span></div>`;
+  });
+  return rows.length ? rows.join("") : '<div class="empty">No decisions recorded yet.</div>';
+}
+
+async function render() {
+  if (!current) return;
+  const [st, runs, evs] = await Promise.all([getJSON(`/api/studies/${current}`), getJSON(`/api/studies/${current}/runs`), getJSON(`/api/studies/${current}/trace`)]);
+  const s = st.status || {}, sm = st.summary, man = st.manifest || {};
+  const fids = (man.simulator && man.simulator.fidelities) || [];
+  const inc = s.incumbent;
+  const live = !["finished", "failed"].includes(s.status);
+  const frac = s.compute_budget ? Math.min(1, s.spent_compute / s.compute_budget) : 0;
+  const ae = document.activeElement && document.activeElement.closest && document.activeElement.closest("#steer");
+  const keep = ae ? { note: $("#note")?.value, bp: $("#bparam")?.value, blo: $("#blo")?.value, bhi: $("#bhi")?.value } : null;
+  $("#detail").innerHTML = `
+    <div class="panel">
+      <h2>${esc(current)}</h2>
+      <div class="stats">
+        <div class="stat"><div class="k">Status</div><div class="v"><span class="pill s-${esc(s.status)}">${esc(s.status)}</span></div></div>
+        <div class="stat"><div class="k">Compute spent</div><div class="v">${fmt(s.spent_compute)} / ${fmt(s.compute_budget)}</div><div class="meter"><i style="width:${(frac * 100).toFixed(1)}%"></i></div></div>
+        <div class="stat"><div class="k">Runs · batches</div><div class="v">${s.n_runs ?? 0} · ${s.batch ?? 0}</div></div>
+        <div class="stat"><div class="k">Incumbent (${esc(inc?.fidelity ?? "–")})</div><div class="v">${fmt(inc?.objective, 6)}</div></div>
+        ${sm && sm.regret != null ? `<div class="stat"><div class="k">Regret vs best known</div><div class="v">${fmt(sm.regret, 4)}</div></div>` : ""}
+        ${sm && sm.llm_tokens_in ? `<div class="stat"><div class="k">LLM tokens · USD</div><div class="v">${sm.llm_tokens_in + sm.llm_tokens_out} · ${sm.llm_usd.toFixed(4)}</div></div>` : ""}
+      </div>
+      ${inc ? `<pre style="margin-top:12px">incumbent params ${esc(JSON.stringify(Object.fromEntries(Object.entries(inc.params).map(([k, v]) => [k, typeof v === "number" ? Number(v.toPrecision(6)) : v]))))}</pre>` : ""}
+      ${s.stop_reason ? `<p class="sub">Stopped: ${esc(s.stop_reason)}</p>` : ""}
+      ${st.error ? `<p class="s-failed">Error: ${esc(st.error)}</p>` : ""}
+    </div>
+    <div class="panel"><h2>Objective per run</h2>${chart(runs, fids)}</div>
+    ${live ? `<div class="panel"><h2>Steer this study</h2>
+      <form id="steer">
+        <label for="note">Note for the planner<input id="note" placeholder="e.g. avoid T above 360 K, our heater is limited"></label>
+        <label for="bparam">Narrow a parameter<select id="bparam">${Object.keys(s.bounds || {}).map(k => `<option>${esc(k)}</option>`).join("")}</select></label>
+        <label for="blo">Low<input id="blo" inputmode="decimal"></label>
+        <label for="bhi">High<input id="bhi" inputmode="decimal"></label>
+        <div class="btns"><button class="b" type="submit">Send</button>
+          <button class="b ghost" type="button" id="pause">${s.status === "paused" ? "Resume" : "Pause"}</button>
+          <button class="b ghost" type="button" id="stop">Stop study</button></div>
+      </form><div id="msg"></div></div>` : ""}
+    <div class="panel"><h2>Decision trace (newest first)</h2><div class="timeline">${timeline(evs)}</div></div>
+    <div class="panel"><h2>Reproducibility</h2><pre>${esc(JSON.stringify({ spec_digest: man.spec_digest, environment: man.environment, results_digest: sm?.results_digest }, null, 2))}</pre></div>`;
+  if (keep) { $("#note").value = keep.note || ""; $("#bparam").value = keep.bp; $("#blo").value = keep.blo || ""; $("#bhi").value = keep.bhi || ""; }
+  if (!live) clearInterval(timer);
+  const f = $("#steer");
+  if (f) {
+    f.onsubmit = async ev => { ev.preventDefault(); const body = {}; const n = $("#note").value.trim(); if (n) body.note = n;
+      const lo = parseFloat($("#blo").value), hi = parseFloat($("#bhi").value);
+      if (!isNaN(lo) && !isNaN(hi)) body.bounds = { [$("#bparam").value]: [lo, hi] };
+      await steer(body, "Sent. The planner sees it before the next batch."); };
+    $("#pause").onclick = () => steer({ pause: s.status !== "paused" }, s.status === "paused" ? "Resumed." : "Pausing after the current batch.");
+    $("#stop").onclick = ev => { if (ev.target.dataset.armed) steer({ stop: true }, "Stopping after the current batch.");
+      else { ev.target.dataset.armed = 1; ev.target.textContent = "Click again to stop"; } };
+  }
+}
+
+async function steer(body, ok) {
+  try { await fetch(`/api/studies/${current}/steer`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+      .then(async r => { if (!r.ok) throw new Error(await r.text()); });
+    setTimeout(() => { const m = $("#msg"); if (m) m.textContent = ok; }, 50); }
+  catch (e) { const m = $("#msg"); if (m) m.textContent = "Could not steer: " + e.message; }
+}
+
+loadList(); setInterval(loadList, 5000);
+const h = location.hash.slice(1); if (h) select(h);
+</script>
+</body>
+</html>

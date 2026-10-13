@@ -1,0 +1,14 @@
+planners:
+  bo: {kind: bo}
+  teacher-7b:
+    kind: llm
+    advisors: [bo]
+    llm: {provider: openai, base_url: "http://localhost:8001/v1", model: Qwen/Qwen2.5-7B-Instruct}
+  base-0.5b:            # the student before distillation (same small model, no fine-tuning)
+    kind: llm
+    advisors: [bo]
+    llm: {provider: openai, base_url: "http://localhost:8003/v1", model: Qwen/Qwen2.5-0.5B-Instruct}
+  distilled-0.5b:
+    kind: llm
+    advisors: [bo]
+    llm: {provider: openai, base_url: "http://localhost:8002/v1", model: sciagent-planner-0.5b}

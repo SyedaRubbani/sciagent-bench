@@ -1,0 +1,17 @@
+# Teacher line-up for collecting planning traces (record mode stores every call per run dir).
+planners:
+  teacher:
+    kind: llm
+    advisors: [bo]
+    llm:
+      # Option A: an open teacher served by vLLM on the same GPU (e.g. Colab L4/A100):
+      #   vllm serve Qwen/Qwen2.5-7B-Instruct --port 8001 --max-model-len 16384
+      provider: openai
+      base_url: http://localhost:8001/v1
+      model: Qwen/Qwen2.5-7B-Instruct
+      mode: record
+      # Option B: a frontier API model as teacher (comment out option A):
+      # provider: anthropic
+      # model: claude-sonnet-5-5
+      # api_key_env: ANTHROPIC_API_KEY
+      # mode: record

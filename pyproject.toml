@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sciagent-bench"
+version = "0.1.0"
+description = "Budget-aware agentic planning of simulation campaigns for research labs: traceable, reproducible, benchmarked."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Syeda Shafia Rubbani" }]
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26",
+  "scipy>=1.11",
+  "scikit-learn>=1.3",
+  "pydantic>=2.5",
+  "pyyaml>=6",
+  "httpx>=0.25",
+]
+
+[project.optional-dependencies]
+service = ["fastapi>=0.110", "uvicorn>=0.27"]
+surrogate = ["torch>=2.2", "onnx>=1.15", "onnxruntime>=1.17"]
+slurm = ["submitit>=1.5"]
+mcp = ["mcp>=1.2"]
+plot = ["matplotlib>=3.7"]
+dev = ["pytest>=7", "ruff>=0.4", "fastapi>=0.110", "httpx>=0.25", "submitit>=1.5", "matplotlib>=3.7"]
+all = ["sciagent-bench[service,surrogate,slurm,mcp,plot]"]
+
+[project.scripts]
+sciagent = "sciagent.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+sciagent = ["static/*.html", "simulators/references.json"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = ["*.ipynb"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501", "B008", "B905"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

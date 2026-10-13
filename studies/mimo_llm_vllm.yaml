@@ -1,0 +1,19 @@
+# Open model served locally with vLLM (or Ollama: base_url http://localhost:11434/v1)
+#   vllm serve Qwen/Qwen2.5-7B-Instruct --port 8001
+name: mimo-ee-open-model
+simulator: mimo
+description: >
+  Find the transmit power and number of active RF chains that maximise energy efficiency of our
+  8-antenna uplink. Monte-Carlo estimates at low fidelity are noisy.
+budget:
+  compute_units: 300
+batch_size: 4
+seed: 0
+planner:
+  kind: llm
+  advisors: [bo]
+  llm:
+    provider: openai
+    base_url: http://localhost:8001/v1
+    model: Qwen/Qwen2.5-7B-Instruct
+    mode: record

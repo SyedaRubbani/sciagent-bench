@@ -1,0 +1,31 @@
+{
+  "reactor": {
+    "optimum": 0.6522580255633719,
+    "argmax": {
+      "T": 320.5044080745029,
+      "tau": 6.8189525992494,
+      "cat": 0.5915285317689096
+    },
+    "method": "closed form + 300-start L-BFGS-B",
+    "exact": true
+  },
+  "heat": {
+    "optimum": -0.5091652760163792,
+    "argmax": {
+      "pin_x": 0.5226188175316329,
+      "pin_y": 0.503543912270396,
+      "pin_r": 0.041406508654462756
+    },
+    "method": "differential evolution on grid64",
+    "exact": false
+  },
+  "mimo": {
+    "optimum": 14.447006370884596,
+    "argmax": {
+      "p_dbm": 22.677708992067178,
+      "n_tx": 6
+    },
+    "method": "exhaustive n_tx x bounded power search, 40k MC draws",
+    "exact": false
+  }
+}

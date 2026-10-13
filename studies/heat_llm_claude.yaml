@@ -1,0 +1,22 @@
+name: heat-pin-claude
+simulator: heat
+description: >
+  Thermal design study: place one cooling pin to minimise the peak temperature of the plate.
+  Larger pins are costly to machine.
+budget:
+  compute_units: 300
+  llm_usd: 1.00           # hard cap on planner spend
+batch_size: 4
+seed: 0
+planner:
+  kind: llm
+  advisors: [bo]          # the agent sees GP expected-improvement suggestions as a tool output
+  options: {fallback: bo} # if the LLM budget runs out, continue with BO instead of stopping
+  llm:
+    provider: anthropic
+    model: claude-sonnet-5-5
+    api_key_env: ANTHROPIC_API_KEY
+    temperature: 0.0
+    price_in_per_mtok: 0.0    # set to your provider's current prices to enforce llm_usd
+    price_out_per_mtok: 0.0
+    mode: record              # store every call so the run can be replayed exactly

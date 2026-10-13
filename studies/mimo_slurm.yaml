@@ -1,0 +1,13 @@
+# Same study on a Slurm cluster: each batch becomes a job array (requires `pip install submitit`).
+name: mimo-ee-slurm
+simulator: mimo
+budget: {compute_units: 600}
+batch_size: 16
+planner: {kind: sh}
+executor:
+  kind: slurm
+  slurm:
+    slurm_partition: normal.4h   # set to your cluster's partition
+    timeout_min: 10
+    cpus_per_task: 1
+    mem_gb: 2
