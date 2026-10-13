@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: docker build -t sciagent-bench .
       - run: |
-          docker run -d -p 8000:8000 -e SCIAGENT_API_TOKEN=ci --name s sciagent-bench
+          docker run -d -p 8000:8000 -e SCIAGENT_API_TOKEN=ci --name sciagent-ci sciagent-bench
           for i in $(seq 30); do curl -sf localhost:8000/api/health && break; sleep 1; done
           test "$(curl -s -o /dev/null -w '%{http_code}' localhost:8000/api/studies)" = "401"
           curl -sf -X POST localhost:8000/api/studies -H 'Authorization: Bearer ci' -H 'content-type: application/json' \
