@@ -110,9 +110,15 @@ def build(roots: list[str | Path], out: str | Path) -> str:
         pk = e.get("packages", {})
         L.append(f"- `{r.name}` (profile `{e.get('profile')}`): device **{d.get('name', d.get('device'))}**"
                  + (f" x{d.get('count')}" if d.get("count") else "") + f", Python {e['environment'].get('python')}, "
-                 + ", ".join(f"{k} {v}" for k, v in pk.items() if v) + f", git `{e['environment'].get('git_sha') or 'n/a'}`.")
+                 + ", ".join(f"{k} {v}" for k, v in pk.items() if v) + f", git `{(e['environment'].get('git_sha') or 'n/a')[:10]}`"
+                 + (" (uncommitted changes)" if e["environment"].get("git_dirty") else "") + ".")
     if not env:
         L.append("- No environment records found.")
+    for r in roots:
+        t = _j(r / "tests" / "summary.json")
+        if t:
+            last = [x for x in t["tail"] if x.strip()]
+            L.append(f"- Test suite in `{r.name}`: {last[-1].strip() if last else 'see junit.xml'}.")
     L.append("")
 
     # ---------------------------------------------------------------- tasks & references

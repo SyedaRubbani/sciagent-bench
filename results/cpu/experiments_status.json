@@ -1,7 +1,8 @@
 {
-  "env": "ok (6s)",
+  "env": "ok (8s)",
   "verify": "ok (334s)",
   "gpu_bench": "ok (415s)",
   "bench_cpu": "ok (282s)",
-  "surrogate": "ok (449s)"
+  "surrogate": "ok (449s)",
+  "tests": "ok (41s)"
 }

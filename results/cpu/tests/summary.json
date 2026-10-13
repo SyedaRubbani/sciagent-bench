@@ -1,0 +1,8 @@
+{
+  "returncode": 0,
+  "tail": [
+    "",
+    "-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html",
+    "69 passed, 1 warning in 37.03s"
+  ]
+}

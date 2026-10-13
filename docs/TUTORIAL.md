@@ -17,7 +17,7 @@ A two-session lab for a course on AI for science, or a starting point for a seme
 
 ## Session 2: agents, evaluation and reproducibility (90 min)
 
-1. Run `sciagent bench --seeds 5` and read `bench_results/results.md`. Is the ranking the same on every
+1. Run `sciagent bench --seeds 5` then `sciagent analyze bench_results` and read `analysis/analysis.md`. Is the ranking the same on every
    task? Rerun with `--budget 120`. What changes?
 2. Point the LLM planner at a model you can access (`studies/heat_llm_claude.yaml` or a local Ollama
    model with `provider: openai, base_url: http://localhost:11434/v1`). Record the run, then
