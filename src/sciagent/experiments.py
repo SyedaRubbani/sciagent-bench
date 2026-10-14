@@ -168,7 +168,7 @@ def _student_gpu(ctx: Ctx):
 
 
 def _llm_planner(url: str, model: str, advisors: list[str], record: bool = True, max_tokens: int = 1024) -> dict:
-    return {"kind": "llm", "advisors": advisors,
+    return {"kind": "llm", "advisors": advisors, "options": {"min_stop_fraction": 0.6},
             "llm": {"provider": "openai", "base_url": url, "model": model, "mode": "record" if record else "live",
                     "max_tokens": max_tokens, "timeout_s": 900}}
 

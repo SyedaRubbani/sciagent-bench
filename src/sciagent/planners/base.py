@@ -22,6 +22,9 @@ class Planner(ABC):
     def observe(self, records: list[RunRecord]) -> None:  # noqa: B027 - optional hook
         """Called with the results of the batch just executed."""
 
+    def feedback(self, issues: list[dict], n_accepted: int) -> None:  # noqa: B027 - optional hook
+        """Called after the guard has checked the last proposal: what it dropped, clipped or accepted."""
+
     # helpers -----------------------------------------------------------------------
     def sample_point(self, state: StudyState) -> dict:
         return {p.name: p.sample(self.rng) for p in state.effective_params()}

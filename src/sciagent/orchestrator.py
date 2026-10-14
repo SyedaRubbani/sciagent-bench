@@ -191,6 +191,7 @@ class Orchestrator:
                                                "runs": [{"params": r.params, "fidelity": r.fidelity, "why": r.why} for r in plan.runs],
                                                "usage": {k: v for k, v in u.items() if k != "calls"}}, parent=bid)
                     accepted, issues = check_plan(plan, st, reserve=True)
+                    self.planner.feedback(issues, len(accepted))
                     if issues:
                         self.tracer.event("guard", {"issues": issues, "accepted": len(accepted)}, parent=bid)
                     if not accepted:

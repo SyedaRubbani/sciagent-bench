@@ -32,8 +32,14 @@ Rules:
 - The result reported to the scientist is the best run at the HIGHEST fidelity evaluated, so reserve budget
   to confirm promising candidates at the top fidelity.
 - Do not repeat a deterministic run that already exists (same parameters and fidelity); it adds nothing.
+  The history lists every run so far: propose NEW parameter values, informed by which regions scored best.
+- If the simulator is stochastic, repeating one point only averages noise. Explore different parameter values
+  instead of re-running the same design.
+- `previous_plan_feedback` says which of your last proposals the safety guard dropped or clipped, and why.
+  Fix those problems in the next plan.
 - Follow the scientist's steering notes when present.
-- Set "stop": true only when further runs are unlikely to improve the result.
+- Spend the budget. Set "stop": true only when the remaining budget cannot improve the result, and never
+  before most of it is used. Each batch must contain at least one run while budget remains.
 
 Reply with ONE JSON object and nothing else:
 {"reasoning_summary": "<= 60 words on your strategy", "stop": false,
@@ -86,6 +92,26 @@ class LLMPlanner(Planner):
         self.advisors = list(spec.planner.advisors)
         self.fallback = BayesOptPlanner({}, spec.seed) if self.options.get("fallback") == "bo" else None
         self._surrogate = None
+        self._last_runs: list[RunRequest] = []
+        self._last_feedback: dict | None = None
+
+    def feedback(self, issues: list[dict], n_accepted: int) -> None:
+        """Remember what the guard did to the last proposal so the next prompt can say so."""
+        items = []
+        for it in issues[:8]:
+            j = it.get("run")
+            run = self._last_runs[j] if isinstance(j, int) and 0 <= j < len(self._last_runs) else None
+            items.append({"proposed": None if run is None else {"params": {k: _r(v) for k, v in run.params.items()},
+                                                               "fidelity": run.fidelity},
+                          "action": it.get("action"), "reason": it.get("reason")})
+        self._last_feedback = {"accepted": n_accepted, "proposed": len(self._last_runs), "problems": items}
+
+    def _too_early_to_stop(self, state: StudyState) -> bool:
+        frac = float(self.options.get("min_stop_fraction", 0.0))
+        if frac <= 0 or state.compute_budget <= 0:
+            return False
+        return (state.spent_compute / state.compute_budget < frac
+                and state.remaining_compute >= state.cheapest_cost() - 1e-9)
 
     # ------------------------------------------------------------------ prompt
     def state_json(self, state: StudyState) -> dict:
@@ -127,6 +153,7 @@ class LLMPlanner(Planner):
             "history_shown": len(rows), "history_total": len(state.history),
             "history": rows,
             "steering_notes": state.notes,
+            "previous_plan_feedback": self._last_feedback,
             "advisors": self.advice(state),
         }
 
@@ -213,8 +240,15 @@ class LLMPlanner(Planner):
                 errors = self._semantic_errors(out, state)
                 if errors:
                     raise ValueError("; ".join(errors))
+                stop = out.stop
+                if stop and self._too_early_to_stop(state):
+                    if not out.runs:
+                        raise ValueError("you may not stop yet: most of the budget is unspent. "
+                                         "Propose new runs (new parameter values) in `runs`")
+                    stop = False  # runs were proposed: execute them and keep going
                 runs = [RunRequest(dict(r.params), r.fidelity, r.why) for r in out.runs]
-                return Plan(runs, out.reasoning_summary, stop=out.stop, usage=usage)
+                self._last_runs = runs
+                return Plan(runs, out.reasoning_summary, stop=stop, usage=usage)
             except (ValueError, ValidationError, json.JSONDecodeError) as e:
                 usage["repairs"] = attempt + 1
                 errors = [str(e)[:500]]
@@ -224,6 +258,10 @@ class LLMPlanner(Planner):
                                                 "Reply again with ONE valid JSON object following the schema."},
                 ]
         usage["failed"] = True
+        self._last_runs = []
+        self._last_feedback = {"accepted": 0, "proposed": 0,
+                               "problems": [{"proposed": None, "action": "rejected",
+                                             "reason": f"your last reply was unusable: {errors[0] if errors else 'invalid'}"}]}
         return Plan([], f"LLM failed to produce a valid plan after {self.llm.max_repairs} repairs: {errors}",
                     stop=False, usage=usage)
 

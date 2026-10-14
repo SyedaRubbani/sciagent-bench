@@ -128,3 +128,35 @@ def test_mock_state_json_is_deterministic(make_spec):
     o1, o2 = Orchestrator(spec), Orchestrator(spec)
     assert isinstance(o1.planner, LLMPlanner)
     assert json.dumps(o1.planner.state_json(o1.state)) == json.dumps(o2.planner.state_json(o2.state))
+
+
+class Stubborn(Provider):
+    """A model that proposes one design, asks to stop immediately, and never changes its answer."""
+
+    model = "stubborn"
+
+    def __init__(self):
+        self.prompts = []
+
+    def complete(self, system, messages, temperature, max_tokens):
+        self.prompts.append(messages[-1]["content"])
+        text = ('{"reasoning_summary": "done", "stop": true, "runs": [{"params": {"T": 340, "tau": 2.0, '
+                '"cat": 0.5}, "fidelity": "euler_coarse", "why": "x"}]}')
+        return LLMResponse(text, 10, 10, self.model)
+
+
+def test_min_stop_fraction_blocks_premature_stop_and_guard_feedback_reaches_prompt(make_spec):
+    spec = make_spec("reactor", planner={"kind": "llm", "options": {"min_stop_fraction": 0.6}}, budget=100)
+    prov = Stubborn()
+    o = Orchestrator(spec, provider=prov)
+    s = o.run()
+    # the repeated deterministic design is dropped by the guard, so the study ends by "no runnable work",
+    # not by the model's stop, and the guard's reason was shown to the model
+    assert "no runnable work" in s["stop_reason"]
+    assert any("duplicate of an existing deterministic run" in p for p in prov.prompts[2:])
+
+
+def test_stop_is_honoured_without_min_fraction(make_spec):
+    spec = make_spec("reactor", planner={"kind": "llm"}, budget=100)
+    s = Orchestrator(spec, provider=Stubborn()).run()
+    assert s["stop_reason"].startswith("planner stopped") and s["n_runs"] == 1
