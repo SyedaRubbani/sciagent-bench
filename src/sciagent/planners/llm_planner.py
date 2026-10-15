@@ -147,7 +147,9 @@ class LLMPlanner(Planner):
             "batch": state.batch,
             "seed": self.spec.seed,
             "budget": {"compute_units": _r(state.compute_budget), "spent": _r(state.spent_compute),
-                       "remaining_compute_units": _r(state.remaining_compute)},
+                       "remaining_compute_units": _r(state.remaining_compute),
+                       "affordable_fidelities": [f.name for f in sim.fidelities
+                                                 if f.cost <= state.remaining_compute + 1e-9]},
             "incumbent": None if inc is None else {"i": inc.index, "params": {k: _r(v) for k, v in inc.params.items()},
                                                    "fidelity": inc.fidelity, "objective": _r(inc.objective)},
             "history_shown": len(rows), "history_total": len(state.history),
@@ -164,6 +166,51 @@ class LLMPlanner(Planner):
         if "surrogate" in self.advisors:
             out["learned_surrogate"] = self._surrogate_advice(state)
         return out
+
+    def _ei_points(self, state: StudyState, k: int) -> list[dict]:
+        """Up to ``k`` GP expected-improvement points, or [] when there is too little data for a GP."""
+        ok = state.ok_runs()
+        if not ok:
+            return []
+        d = len(state.sim.params)
+        lvl = max(r.fidelity_level for r in ok)
+        data = [r for r in ok if r.fidelity_level == lvl]
+        if len(data) < d + 2:
+            lvl = min(r.fidelity_level for r in ok)
+            data = [r for r in ok if r.fidelity_level == lvl]
+            if len(data) < d + 2:
+                return []
+        X = np.array([self.to_unit(state, r.params) for r in data])
+        y = np.array([r.objective for r in data])
+        rng = np.random.default_rng(state.batch + 29)
+        return [self.from_unit(state, u) for u, _ in suggest_ei(X, y, k, rng, d, n_cand=1500)]
+
+    def _guard_repair(self, plan: Plan, state: StudyState) -> Plan:
+        """If the guard would reject every run of ``plan``, keep the model's fidelity choice when it is affordable and
+        replace the rejected parameter values with GP-EI points. Added runs are labelled and counted in the trace."""
+        from ..guard import check_plan
+
+        if plan.stop or state.remaining_compute < state.cheapest_cost() - 1e-9:
+            return plan
+        accepted, issues = check_plan(plan, state)
+        if accepted:
+            return plan
+        afford = sorted([f for f in state.sim.fidelities if f.cost <= state.remaining_compute + 1e-9],
+                        key=lambda f: f.level)
+        if not afford:
+            return plan
+        names = {f.name for f in afford}
+        fid = next((r.fidelity for r in plan.runs if r.fidelity in names), afford[-1].name)
+        k = self.spec.batch_size
+        pts = self._ei_points(state, k)
+        while len(pts) < k:
+            pts.append(self.sample_point(state))
+        reasons = sorted({str(i.get("reason", ""))[:40] for i in issues})[:2]
+        why = "guard-repair (model's proposals were rejected: " + "; ".join(reasons) + ")"
+        plan.runs = list(plan.runs) + [RunRequest(p, fid, why) for p in pts]
+        plan.usage["repaired"] = len(pts)
+        plan.rationale = (plan.rationale + f" [guard-repair: {len(pts)} runs added at {fid}]").strip()
+        return plan
 
     def _bo_advice(self, state: StudyState):
         ok = state.ok_runs()
@@ -247,8 +294,11 @@ class LLMPlanner(Planner):
                                          "Propose new runs (new parameter values) in `runs`")
                     stop = False  # runs were proposed: execute them and keep going
                 runs = [RunRequest(dict(r.params), r.fidelity, r.why) for r in out.runs]
-                self._last_runs = runs
-                return Plan(runs, out.reasoning_summary, stop=stop, usage=usage)
+                plan = Plan(runs, out.reasoning_summary, stop=stop, usage=usage)
+                if self.options.get("guard_repair"):
+                    plan = self._guard_repair(plan, state)
+                self._last_runs = plan.runs
+                return plan
             except (ValueError, ValidationError, json.JSONDecodeError) as e:
                 usage["repairs"] = attempt + 1
                 errors = [str(e)[:500]]

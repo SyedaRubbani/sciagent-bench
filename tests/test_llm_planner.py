@@ -160,3 +160,16 @@ def test_stop_is_honoured_without_min_fraction(make_spec):
     spec = make_spec("reactor", planner={"kind": "llm"}, budget=100)
     s = Orchestrator(spec, provider=Stubborn()).run()
     assert s["stop_reason"].startswith("planner stopped") and s["n_runs"] == 1
+
+
+def test_guard_repair_keeps_a_stubborn_model_spending_its_budget(make_spec):
+    spec = make_spec("reactor", planner={"kind": "llm", "options": {"min_stop_fraction": 0.6, "guard_repair": True}},
+                     budget=100)
+    o = Orchestrator(spec, provider=Stubborn())
+    s = o.run()
+    # the model asks to stop every batch; that is only honoured once 60% of the budget is spent
+    assert s["n_runs"] > 3 and s["spent_compute"] >= 60 - 1e-9
+    assert "no runnable work" not in s["stop_reason"]
+    plans = [e["data"] for e in o.tracer.events if e["kind"] == "plan"]
+    assert any(p["usage"].get("repaired", 0) > 0 for p in plans)
+    assert s["spent_compute"] <= 100 + 1e-9

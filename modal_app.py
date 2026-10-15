@@ -1,4 +1,4 @@
-"""Run the GPU experiments on Modal (https://modal.com).
+﻿"""Run the GPU experiments on Modal (https://modal.com).
 
 Results and the Hugging Face model cache live on Modal Volumes, so they survive between runs, models are
 downloaded once, and an interrupted run resumes where it stopped (finished steps are skipped).
@@ -92,3 +92,12 @@ def main(profile: str = "quick", steps: str = ""):
 @app.local_entrypoint()
 def status(profile: str = "quick"):
     print(read_status.remote(profile))
+
+
+
+@app.local_entrypoint()
+def launch(profile: str = "quick", steps: str = ""):
+    chosen = steps.split() if steps else STEPS
+    fn = modal.Function.from_name(APP_NAME, "run_pipeline")
+    call = fn.spawn(profile, chosen)
+    print(f"started {profile} in the background: call id {call.object_id}")
